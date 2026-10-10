@@ -8,7 +8,7 @@
     python scripts/kaggle_job.py push --name dapt-random --cmd "python scripts/run_dapt.py --config configs/dapt/random.yaml"
 
     # fine-tune using the models produced by earlier jobs (their outputs are attached and merged)
-    python scripts/kaggle_job.py push --name ft-acl --inputs-from dapt-random dapt-depression \\
+    python scripts/kaggle_job.py push --name ft-mentalbert --inputs-from dapt-random dapt-depression \\
         --cmd "python scripts/run_finetune.py --tasks suicide cognitive --models all"
 
     python scripts/kaggle_job.py status --name smoke

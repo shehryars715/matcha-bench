@@ -1,7 +1,7 @@
 # Downstream task construction. Every task is written to data/tasks/<name>/.
 processed_dir: data/processed
 task_root: data/tasks
-acl_raw_dir: data/raw/acl
+mentalbert_raw_dir: data/raw/mentalbert
 seed: 42
 
 matcha:
@@ -43,6 +43,6 @@ matcha:
     max_per_class_train: 1500
     max_per_class_eval: 500
 
-# Public datasets from the Chinese MentalBERT paper (download with scripts/download_acl_data.py).
-# c2d2 is skipped automatically unless data/raw/acl/c2d2/{train,dev,test}.csv exist.
-acl: [ewect_usual, ewect_epidemic, waimai, cognitive, suicide, c2d2]
+# Public datasets from the Chinese MentalBERT paper (download with scripts/download_mentalbert_data.py).
+# c2d2 is skipped automatically unless data/raw/mentalbert/c2d2/{train,dev,test}.csv exist.
+mentalbert: [ewect_usual, ewect_epidemic, waimai, cognitive, suicide, c2d2]

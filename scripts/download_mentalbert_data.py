@@ -1,4 +1,4 @@
-"""Download the public downstream datasets used by Chinese MentalBERT into data/raw/acl/."""
+"""Download the public downstream datasets used by Chinese MentalBERT into data/raw/mentalbert/."""
 
 import argparse
 from pathlib import Path
@@ -7,12 +7,12 @@ import requests
 
 import _bootstrap  # noqa: F401
 from matcha_bench.config import resolve_path
-from matcha_bench.tasks.acl_tasks import RAW_URLS
+from matcha_bench.tasks.mentalbert_tasks import RAW_URLS
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--out", default="data/raw/acl")
+    ap.add_argument("--out", default="data/raw/mentalbert")
     args = ap.parse_args()
     out = resolve_path(args.out)
     for rel, url in RAW_URLS.items():

@@ -60,7 +60,7 @@ def _ewect(raw: Path, prefix: str, name: str) -> TaskData:
 
     return TaskData(
         name=name,
-        group="acl",
+        group="mentalbert",
         splits={
             "train": read(f"{prefix}_train.txt"),
             "dev": read(f"{prefix}_eval_labeled.txt"),
@@ -86,7 +86,7 @@ def build_waimai(raw: Path, seed: int = 42) -> TaskData:
     train, rest = train_test_split(df, test_size=0.2, random_state=seed, stratify=df["label"])
     dev, test = train_test_split(rest, test_size=0.5, random_state=seed, stratify=rest["label"])
     return TaskData(
-        name="waimai", group="acl",
+        name="waimai", group="mentalbert",
         splits={"train": train, "dev": dev, "test": test},
         label_names=["negative", "positive"], average="binary",
         description="Waimai_10k food-delivery review sentiment.",
@@ -104,7 +104,7 @@ def build_cognitive(raw: Path, seed: int = 42) -> TaskData:
 
     train, dev = _split_off_dev(read("train_data_with_header.tsv"), 0.2, seed, stratify=False)
     return TaskData(
-        name="cognitive", group="acl",
+        name="cognitive", group="mentalbert",
         splits={"train": train, "dev": dev, "test": read("test_data_with_header.tsv")},
         label_names=COGNITIVE_LABELS, problem_type=MULTI, average="micro",
         description="SocialCD-3K multi-label cognitive distortion detection (12 Burns categories).",
@@ -120,7 +120,7 @@ def build_suicide(raw: Path, seed: int = 42) -> TaskData:
 
     train, dev = _split_off_dev(read("suicide_train_BERT.tsv"), 0.2, seed)
     return TaskData(
-        name="suicide", group="acl",
+        name="suicide", group="mentalbert",
         splits={"train": train, "dev": dev, "test": read("suicide_val_BERT.tsv")},
         label_names=["low_risk", "high_risk"], average="binary",
         description="SOS-HL-1K high vs low suicide risk on tree-hole posts.",
@@ -134,7 +134,7 @@ def build_c2d2(raw: Path, seed: int = 42) -> TaskData:
     for s, df in splits.items():
         splits[s] = pd.DataFrame({"text": df["text"].astype(str), "label": df["label"].astype(str).map(names.index)})
     return TaskData(
-        name="c2d2", group="acl", splits=splits, label_names=names, average="macro",
+        name="c2d2", group="mentalbert", splits=splits, label_names=names, average="macro",
         description="C2D2 multi-class cognitive distortion (data by request from its authors).",
     )
 

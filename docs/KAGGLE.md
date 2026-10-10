@@ -13,7 +13,7 @@ GPUs automatically.
 
 ```bash
 python scripts/prepare_matcha.py
-python scripts/download_acl_data.py
+python scripts/download_mentalbert_data.py
 python scripts/build_tasks.py
 python scripts/build_depression_lexicon.py
 python scripts/mine_lexicon.py

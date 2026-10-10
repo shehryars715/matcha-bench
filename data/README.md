@@ -27,10 +27,10 @@ MATCHA_ROOT/
 ## 2. Downstream datasets from Chinese MentalBERT
 
 ```bash
-python scripts/download_acl_data.py      # EWECT, Waimai_10k, SocialCD-3K, SOS-HL-1K -> data/raw/acl/
+python scripts/download_mentalbert_data.py   # EWECT, Waimai_10k, SocialCD-3K, SOS-HL-1K -> data/raw/mentalbert/
 ```
 
-C2D2 is shared on request by its authors. Save it as `data/raw/acl/c2d2/{train,dev,test}.csv`
+C2D2 is shared on request by its authors. Save it as `data/raw/mentalbert/c2d2/{train,dev,test}.csv`
 with columns `text,label`, and it is picked up automatically.
 
 ## 3. Generated folders
@@ -40,4 +40,4 @@ with columns `text,label`, and it is picked up automatically.
 | `data/processed/` | `prepare_matcha.py` | cleaned posts, users, IP anchors, global user-level split |
 | `data/tasks/<task>/` | `build_tasks.py` | `train/dev/test.jsonl` + `meta.json` for every task |
 | `data/dapt/` | `build_dapt_corpus.py` | packed 128-token chunks with word-boundary metadata |
-| `data/raw/acl/` | `download_acl_data.py` | public downstream datasets |
+| `data/raw/mentalbert/` | `download_mentalbert_data.py` | public downstream datasets |

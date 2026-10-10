@@ -101,7 +101,7 @@ pip install -e .                      # or: pip install -r requirements.txt
 
 # 0. data (see data/README.md for MATCHA access)
 python scripts/prepare_matcha.py                 # clean + user-level splits
-python scripts/download_acl_data.py              # public Chinese MentalBERT downstream datasets
+python scripts/download_mentalbert_data.py       # public Chinese MentalBERT downstream datasets
 python scripts/build_tasks.py                    # all tasks -> data/tasks/
 
 # 1. lexicons

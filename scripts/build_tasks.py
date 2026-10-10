@@ -4,14 +4,14 @@ import argparse
 
 import _bootstrap  # noqa: F401
 from matcha_bench.config import load_config, resolve_path
-from matcha_bench.tasks import acl_tasks, matcha_tasks, save_task
+from matcha_bench.tasks import matcha_tasks, mentalbert_tasks, save_task
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", default="configs/tasks.yaml")
     ap.add_argument("--only", nargs="*", help="build only these task names")
-    ap.add_argument("--group", choices=["matcha", "acl", "all"], default="all")
+    ap.add_argument("--group", choices=["matcha", "mentalbert", "all"], default="all")
     ap.add_argument("--set", nargs="*", default=[])
     args = ap.parse_args()
     cfg = load_config(resolve_path(args.config), args.set)
@@ -35,13 +35,13 @@ def main():
                 save_task(task, task_root)
                 report(task)
 
-    if args.group in ("acl", "all"):
-        raw = resolve_path(cfg["acl_raw_dir"])
-        for name in cfg["acl"]:
+    if args.group in ("mentalbert", "all"):
+        raw = resolve_path(cfg["mentalbert_raw_dir"])
+        for name in cfg["mentalbert"]:
             if not wanted(name):
                 continue
             try:
-                task = acl_tasks.BUILDERS[name](raw, seed=seed)
+                task = mentalbert_tasks.BUILDERS[name](raw, seed=seed)
             except FileNotFoundError as exc:
                 print(f"skip  {name:<32} (missing {exc.filename})")
                 continue

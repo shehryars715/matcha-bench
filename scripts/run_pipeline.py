@@ -2,6 +2,8 @@
 
     python scripts/run_pipeline.py --deadline <unix-seconds>      # used by Kaggle jobs
     python scripts/run_pipeline.py --budget-hours 9                # deadline = now + budget - margin
+    python scripts/run_pipeline.py --no-limit                       # local GPU: run until done
+    python scripts/run_pipeline.py --no-limit --dapt-set training.per_device_train_batch_size=16         --finetune-set defaults.batch_size=8 defaults.grad_accum=2   # smaller GPUs (same effective batch)
 
 Stages (configs/pipeline.yaml) run in order:
 * dapt: skipped if outputs/dapt/<variant>/final exists; otherwise trains (resuming from the last
@@ -24,6 +26,7 @@ import _bootstrap  # noqa: F401
 from matcha_bench.config import REPO_ROOT, load_config, resolve_path
 
 PY = sys.executable
+EXTRA = {"dapt": [], "finetune": []}  # extra --set overrides passed to the step scripts
 
 
 def log_event(**event) -> None:
@@ -66,7 +69,7 @@ def stage_dapt(stage, deadline) -> bool:
     if minutes_left(deadline) < 15:
         log_event(stage=stage["name"], status="not started (time)")
         return False
-    code = run([PY, "scripts/run_dapt.py", "--config", stage["config"], "--set", f"deadline={deadline}"])
+    code = run([PY, "scripts/run_dapt.py", "--config", stage["config"], "--set", f"deadline={deadline}", *EXTRA["dapt"]])
     done = (out / "final").exists()
     progress = out / "progress.json"
     step = json.loads(progress.read_text(encoding="utf-8")).get("global_step") if progress.exists() else None
@@ -96,7 +99,8 @@ def stage_finetune(stage, deadline) -> bool:
                 if minutes_left(deadline) < need:
                     log_event(stage="finetune", status="paused (time)", next=f"{task}/{model}/seed{seed}")
                     return False
-                code = run([PY, "scripts/run_finetune.py", "--tasks", task, "--models", model, "--seeds", str(seed)])
+                cmd = [PY, "scripts/run_finetune.py", "--tasks", task, "--models", model, "--seeds", str(seed)]
+                code = run(cmd + (["--set", *EXTRA["finetune"]] if EXTRA["finetune"] else []))
                 log_event(stage="finetune", run=f"{task}/{model}/seed{seed}", returncode=code)
                 if code != 0:
                     completed_all = False
@@ -129,10 +133,16 @@ def main():
     ap.add_argument("--config", default="configs/pipeline.yaml")
     ap.add_argument("--deadline", type=float, help="unix time by which to stop (already includes the margin)")
     ap.add_argument("--budget-hours", type=float, help="override the config budget (from now)")
+    ap.add_argument("--no-limit", action="store_true", help="no time budget (e.g. a local GPU)")
+    ap.add_argument("--dapt-set", nargs="*", default=[], help="config overrides for every DAPT run")
+    ap.add_argument("--finetune-set", nargs="*", default=[], help="config overrides for every fine-tuning run")
     args = ap.parse_args()
     cfg = load_config(resolve_path(args.config))
+    EXTRA["dapt"], EXTRA["finetune"] = args.dapt_set, args.finetune_set
 
-    if args.deadline:
+    if args.no_limit:
+        deadline = time.time() + 10 * 365 * 24 * 3600
+    elif args.deadline:
         deadline = args.deadline
     else:
         budget = args.budget_hours or cfg["budget_hours"]

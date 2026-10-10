@@ -124,8 +124,9 @@ python scripts/run_finetune.py --tasks all --models all      # resumable
 python scripts/summarize_results.py --compare matcha-multidisorder matcha-random
 ```
 
-**Reproduce on Kaggle in one click:** open [`notebooks/reproduce_matcha_bench.ipynb`](notebooks/reproduce_matcha_bench.ipynb)
-on Kaggle (GPU T4 ×2, Internet on, `matcha-bench-data` attached) and *Run All*.
+**Reproduce in one notebook:** [`notebooks/reproduce_local.ipynb`](notebooks/reproduce_local.ipynb) on a local GPU
+(needs the data zip), or [`notebooks/reproduce_kaggle.ipynb`](notebooks/reproduce_kaggle.ipynb) on Kaggle (GPU T4 ×2, Internet on,
+`matcha-bench-data` attached). Both have a 5-minute `check` mode and resume after interruptions.
 
 Running on Kaggle from the command line (free T4 ×2): `python scripts/kaggle_pipeline.py start` runs the whole GPU pipeline in
 resumable 9-hour sessions (run it again after each session finishes). See [`docs/KAGGLE.md`](docs/KAGGLE.md) and

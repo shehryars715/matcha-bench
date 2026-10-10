@@ -2,7 +2,7 @@
 
     python scripts/run_dapt.py --config configs/dapt/random.yaml
     python scripts/run_dapt.py --config configs/dapt/depression.yaml
-    python scripts/run_dapt.py --config configs/dapt/deepseek.yaml
+    python scripts/run_dapt.py --config configs/dapt/multidisorder.yaml
     python scripts/run_dapt.py --config configs/dapt/smoke.yaml      # CPU sanity check
 
 Interrupted runs resume from the last checkpoint in output_dir automatically.

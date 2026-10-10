@@ -1,0 +1,5 @@
+# Extension: multi-disorder lexicon mined from MATCHA and filtered by an LLM annotator.
+# To use the DeepSeek-filtered lexicon instead: lexicon: lexicons/lexicon_deepseek.txt
+base: base.yaml
+lexicon: lexicons/lexicon_multidisorder.txt
+output_dir: outputs/dapt/multidisorder

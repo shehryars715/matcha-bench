@@ -14,7 +14,16 @@ mining:
   min_users: 5          # k-anonymity: a word must be used by >= 5 distinct users
   top_k: 1500           # per disorder
 
-# 3) DeepSeek filtering of the candidate words (only words are sent, never posts).
+# 3) Word-level filtering of the candidates -> multi-disorder lexicon (used by configs/dapt/multidisorder.yaml).
+#    lexicons/llm_annotations.csv lists every kept word with its category (word,category).
+multidisorder:
+  annotations: lexicons/llm_annotations.csv
+  annotated_candidates: lexicons/multidisorder_annotations.csv
+  output: lexicons/lexicon_multidisorder.txt
+  exclude_categories: []            # e.g. [clinical] to drop diagnosis / medication terms
+  header: "MATCHA multi-disorder lexicon: log-odds mining + LLM-annotated word filtering"
+
+# 3') Optional alternative filter: DeepSeek API, 3 votes (only words are sent, never posts).
 deepseek:
   model: deepseek-chat              # check the current model name on api-docs.deepseek.com
   base_url: https://api.deepseek.com

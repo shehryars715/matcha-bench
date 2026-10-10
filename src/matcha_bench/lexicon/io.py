@@ -35,6 +35,18 @@ def save_lexicon(words: Iterable[str], path: str | Path, header: str | None = No
             f.write(w + "\n")
 
 
+def apply_word_annotations(candidates: pd.DataFrame, annotations: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    """Join word-level keep decisions (``word, category``: every listed word is kept) onto
+    the per-disorder candidates. Returns the annotated candidates and any annotated words
+    that are not candidates (typos, or words from another mining run)."""
+    ann = annotations.assign(word=annotations["word"].astype(str).str.strip()).drop_duplicates("word")
+    out = candidates.merge(ann[["word", "category"]], on="word", how="left")
+    out["keep"] = out["category"].notna().astype(int)
+    out["category"] = out["category"].fillna("none")
+    unmatched = sorted(set(ann["word"]) - set(candidates["word"]))
+    return out, unmatched
+
+
 def convert_depression_lexicon(csv_path: str | Path) -> set[str]:
     """Reproduce the filtering in the Chinese MentalBERT code: keep rows with
     抑郁倾向 == 1 whose word is made only of Chinese characters."""

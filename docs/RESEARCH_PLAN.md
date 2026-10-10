@@ -27,9 +27,9 @@ Twitter-STMHD). It releases **no tasks, splits or baselines**.
 |---|---|---|---|---|---|
 | A | Faithful swap | MATCHA replaces the private corpus; same depression lexicon; same 6 tasks | low: a reproduction study | ~6 GPU-h DAPT | **kept**, as the reproduction arm |
 | B | Multi-disorder lexicon (mined) | lexicon = log-odds over the 7 disorders vs control | medium | + CPU minutes | kept, as the input to C |
-| C | **Mined + LLM-filtered lexicon** | B, filtered by DeepSeek with majority votes | medium–high | < $1 API | **kept, the extension** |
-| D | Pure LLM-generated lexicon | DeepSeek writes the words from scratch | medium | < $0.10 | rejected: many words never occur in Weibo text, so they never trigger masking |
-| E | Per-post LLM annotation as masking signal | DeepSeek tags every post | high | $40–150+, DUA risk | rejected: sends raw posts to an external API |
+| C | **Mined + LLM-filtered lexicon** | B, filtered word by word by an LLM annotator (DeepSeek script kept as an alternative) | medium–high | free–$1 | **kept, the extension** |
+| D | Pure LLM-generated lexicon | an LLM writes the words from scratch | medium | < $0.10 | rejected: many words never occur in Weibo text, so they never trigger masking |
+| E | Per-post LLM annotation as masking signal | an LLM tags every post | high | $40–150+, DUA risk | rejected: sends raw posts to an external API |
 | F | Benchmark on MATCHA | new tasks with leakage controls | **high**, a first for MATCHA | fine-tuning GPU-h | **kept as the primary contribution** |
 | G | LLM baselines (Qwen-7B LoRA) | like the paper's Llama2/Alpaca rows | medium | heavy on a T4 | deferred (optional section) |
 | H | RoBERTa-wwm variants | second backbone | low | 2× GPU | deferred |
@@ -46,11 +46,11 @@ extension of lexicon-guided domain-adaptive pre-training."*
 | Compute | Kaggle with phone verification (free T4/P100, about 30 GPU-h/week). CPU-heavy steps run locally. |
 | Paper focus | Benchmark first; DAPT variants are a model family inside it. |
 | Evaluation | The ACL public tasks plus 7 MATCHA tasks (including masked variants). |
-| Lexicon | Hybrid: log-odds mining on MATCHA train users, then DeepSeek filtering (3 votes). |
+| Lexicon | Hybrid: log-odds mining on MATCHA train users, then single-pass LLM filtering of the words (no API key needed). The DeepSeek 3-vote filter remains available. |
 | Models | TF-IDF, bert-base-chinese, chinese-bert-wwm-ext, Chinese MentalBERT, and 3 MATCHA-DAPT variants. |
 | Repo | Local git first; pushed to GitHub after review. |
 
-## 4. DeepSeek: is it suitable, and what does it cost?
+## 4. LLM word filtering: options and cost
 
 DeepSeek is a good fit. It is among the strongest models for Chinese, knows Weibo slang
 (郁友, 焦友, emo了), supports JSON-mode output, and is cheap. Measured corpus size:
@@ -95,12 +95,12 @@ CPU-only steps can run on a laptop: data preparation, task building, mining, cor
 1. **Corpus effect:** `matcha-random` vs `bert-wwm-ext`. Expect gains on the mental-health tasks.
 2. **Lexicon effect (reproduction):** `matcha-depression` vs `matcha-random`. Does the ACL claim hold on an
    open corpus with seeds and significance tests?
-3. **Multi-disorder lexicon:** `matcha-deepseek` vs `matcha-depression`. Expect the largest gap on
+3. **Multi-disorder lexicon:** `matcha-multidisorder` vs `matcha-depression`. Expect the largest gap on
    non-depression MATCHA tasks (BD, OCD, SZ per-class F1).
 4. **Shortcut reliance:** every model, raw vs `_masked`. The size of the drop shows how much is keyword
    matching. Does DAPT reduce that reliance?
 5. **Cross-corpus check:** `chinese-mentalbert` (private corpus) vs `matcha-*` on the ACL tasks.
-6. **Analysis:** lexicon coverage, the category mix of the DeepSeek lexicon, fill-mask probes on
+6. **Analysis:** lexicon coverage, the category mix of the multi-disorder lexicon, fill-mask probes on
    SCL-90 items (as in the ACL paper's Table 5), per-gender error rates.
 
 ### Preliminary observations (local CPU runs, 2026-10-11)
@@ -116,8 +116,11 @@ These come from the first local runs. They are not final results.
   sample. Only 43% of 128-token chunks contain a lexicon word, and lexicon words fill only
   **≈ 8% of the masking budget**; the rest is random top-up. This may explain the small
   guided-vs-random gains in the ACL paper, and it motivates a larger, multi-disorder lexicon.
-- **Mining:** 9,307 (disorder, word) candidates, 4,269 unique. DeepSeek filtering is estimated at
-  **$0.33** for 3 votes.
+- **Mining:** 9,307 (disorder, word) candidates, 4,269 unique.
+- **Multi-disorder lexicon:** single-pass LLM filtering kept **526 words** (emotion, cognition,
+  somatic, behavior, clinical, community and social). It is a third of the size of the depression
+  lexicon but fills **13.6% of the masking budget vs 7.4%**, and appears in 51% vs 42% of chunks
+  (20k-post sample). (The DeepSeek 3-vote alternative was estimated at $0.33.)
 - **Shortcut effect (TF-IDF baseline):** `matcha_disorder_post` macro-F1 is **48.8**, but only **39.6**
   once disorder and drug names are masked. Keywords carry a large share of the signal.
 - TF-IDF on the ACL tasks: Suicide F1 75.4, Cognitive micro-F1 63.1. The paper reports
@@ -139,7 +142,9 @@ These come from the first local runs. They are not final results.
 - [ ] Confirm with the MATCHA authors whether the DUA allows (a) a private Kaggle dataset copy,
       (b) releasing split IDs, and (c) releasing the mined lexicon.
 - [ ] Request C2D2 from its authors to complete the six ACL tasks.
-- [ ] Human spot-check of the DeepSeek lexicon (2 annotators, report κ).
+- [ ] Human spot-check of the multi-disorder lexicon (2 annotators on all 526 kept words plus ~300
+      rejected ones; report κ against the LLM decisions).
+- [ ] State in the paper which LLM did the word filtering (model name and date).
 - [ ] Replace the compute estimates in §5 with measured times.
 - [ ] Optional: a Qwen2.5-7B LoRA baseline on the post-level tasks.
 - [ ] Release DAPT model weights only if the DUA permits it.

@@ -11,7 +11,7 @@ models:
   chinese-mentalbert: zwzzz/Chinese-MentalBERT
   matcha-random: outputs/dapt/random/final
   matcha-depression: outputs/dapt/depression/final
-  matcha-deepseek: outputs/dapt/deepseek/final
+  matcha-multidisorder: outputs/dapt/multidisorder/final
 
 defaults:
   epochs: 10

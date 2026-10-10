@@ -17,7 +17,7 @@ python scripts/download_acl_data.py
 python scripts/build_tasks.py
 python scripts/build_depression_lexicon.py
 python scripts/mine_lexicon.py
-python scripts/filter_lexicon_deepseek.py      # needs DEEPSEEK_API_KEY, < $1
+python scripts/build_multidisorder_lexicon.py  # needs lexicons/llm_annotations.csv
 python scripts/build_dapt_corpus.py
 ```
 
@@ -53,7 +53,7 @@ for up to 12 h, and `/kaggle/working` (≤ 20 GB) is kept as output.
 | Session | Work |
 |---|---|
 | 1 | smoke test, then `random` DAPT |
-| 2 | `depression` DAPT, then `deepseek` DAPT |
+| 2 | `depression` DAPT, then `multidisorder` DAPT |
 | 3 | ACL tasks × all models × 3 seeds |
 | 4–5 | MATCHA tasks × all models × 3 seeds |
 | local | `run_tfidf.py`, `summarize_results.py` |

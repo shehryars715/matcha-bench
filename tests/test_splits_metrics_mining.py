@@ -39,6 +39,17 @@ def test_log_odds_ranks_overrepresented_word_first():
     assert scores.iloc[-1]["word"] == "吃饭"
 
 
+def test_apply_word_annotations_keeps_listed_words_for_every_disorder():
+    from matcha_bench.lexicon.io import apply_word_annotations
+
+    cands = pd.DataFrame({"disorder": ["DEP", "GAD", "GAD"], "word": ["失眠", "失眠", "红包"]})
+    ann = pd.DataFrame({"word": ["失眠", "错字"], "category": ["somatic", "emotion"]})
+    out, unmatched = apply_word_annotations(cands, ann)
+    assert out["keep"].tolist() == [1, 1, 0]
+    assert out.loc[out["word"] == "红包", "category"].item() == "none"
+    assert unmatched == ["错字"]
+
+
 def test_candidate_filter():
     assert is_candidate("失眠") and is_candidate("emo")
     assert not is_candidate("的") and not is_candidate("2023") and not is_candidate("哈哈")

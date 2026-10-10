@@ -31,7 +31,7 @@ This repository connects the two:
 1. **Reproduction.** Lexicon-guided DAPT is re-run on an open, gated corpus (MATCHA) and evaluated on the
    public downstream tasks from the ACL paper.
 2. **Extension.** A **multi-disorder lexicon** is mined from MATCHA with log-odds statistics and
-   filtered by an LLM (DeepSeek). It is compared against random masking and the original
+   filtered word by word by an LLM annotator. It is compared against random masking and the original
    depression lexicon.
 3. **Benchmark.** The first detection tasks on MATCHA, built with **user-level splits**, **contaminated-control
    removal** and **shortcut-masked variants** that hide disorder and drug names. Every number is
@@ -45,13 +45,13 @@ flowchart LR
     B --> C[build_tasks<br/>7 MATCHA tasks]
     D[ACL public datasets] --> C2[build_tasks<br/>5–6 ACL tasks]
     B --> E[mine_lexicon<br/>log-odds vs control]
-    E --> F[DeepSeek filter<br/>words only, 3 votes]
+    E --> F[LLM word filter<br/>words only, never posts]
     G[Depression lexicon<br/>Li et al. 2020] --> H
     F --> H[build_dapt_corpus<br/>train users only]
     B --> H
     H --> I1[DAPT: random]
     H --> I2[DAPT: depression lexicon]
-    H --> I3[DAPT: DeepSeek lexicon]
+    H --> I3[DAPT: multi-disorder lexicon]
     I1 & I2 & I3 --> J[fine-tune × tasks × seeds]
     C & C2 --> J
     J --> K[tables + significance]
@@ -66,7 +66,7 @@ hyper-parameters, so they differ only in mask selection.
 |---|---|---|---|
 | `matcha-random` | whole-word, 20% | none | effect of the corpus alone |
 | `matcha-depression` | lexicon-guided, 20% | Li et al. (2020), 1,470 words | faithful reproduction |
-| `matcha-deepseek` | lexicon-guided, 20% | MATCHA-mined + DeepSeek-filtered, 7 disorders | **extension** |
+| `matcha-multidisorder` | lexicon-guided, 20% | MATCHA-mined + LLM-filtered, 7 disorders, 526 words | **extension** |
 
 **Baselines.** `tfidf-lr` (char 1–3-gram), `bert-base-chinese`, `hfl/chinese-bert-wwm-ext`,
 and the released `zwzzz/Chinese-MentalBERT`.
@@ -107,20 +107,20 @@ python scripts/build_tasks.py                    # all tasks -> data/tasks/
 # 1. lexicons
 python scripts/build_depression_lexicon.py       # faithful lexicon
 python scripts/mine_lexicon.py                   # candidates from MATCHA (local)
-python scripts/filter_lexicon_deepseek.py --dry-run
-DEEPSEEK_API_KEY=sk-... python scripts/filter_lexicon_deepseek.py
+python scripts/build_multidisorder_lexicon.py     # from lexicons/llm_annotations.csv
+# optional alternative filter: DEEPSEEK_API_KEY=sk-... python scripts/filter_lexicon_deepseek.py
 
 # 2. pre-training (GPU)
 python scripts/build_dapt_corpus.py              # shared cache, train users only
 python scripts/run_dapt.py --config configs/dapt/smoke.yaml        # CPU sanity check
 python scripts/run_dapt.py --config configs/dapt/random.yaml
 python scripts/run_dapt.py --config configs/dapt/depression.yaml
-python scripts/run_dapt.py --config configs/dapt/deepseek.yaml
+python scripts/run_dapt.py --config configs/dapt/multidisorder.yaml
 
 # 3. evaluation
 python scripts/run_tfidf.py                                  # CPU baseline
 python scripts/run_finetune.py --tasks all --models all      # resumable
-python scripts/summarize_results.py --compare matcha-deepseek matcha-random
+python scripts/summarize_results.py --compare matcha-multidisorder matcha-random
 ```
 
 Running on Kaggle (free T4/P100): see [`docs/KAGGLE.md`](docs/KAGGLE.md) and
@@ -148,7 +148,7 @@ The original implementation was checked against the
 ├── src/matcha_bench/
 │   ├── data/                MATCHA loading, cleaning, user-level splits
 │   ├── tasks/               MATCHA and ACL task builders (one shared on-disk format)
-│   ├── lexicon/             depression lexicon import, log-odds mining, DeepSeek filter
+│   ├── lexicon/             depression lexicon, log-odds mining, word filtering
 │   ├── pretrain/            corpus packing, lexicon-guided WWM collator, DAPT trainer
 │   ├── finetune/            fine-tuning runner and metrics
 │   ├── baselines/           TF-IDF + logistic regression

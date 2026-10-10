@@ -1,7 +1,7 @@
 """Step 7: results tables (mean ± std over seeds) and paired-bootstrap significance tests.
 
     python scripts/summarize_results.py
-    python scripts/summarize_results.py --compare matcha-deepseek matcha-random
+    python scripts/summarize_results.py --compare matcha-multidisorder matcha-random
 """
 
 import argparse

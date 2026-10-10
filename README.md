@@ -96,7 +96,7 @@ and the released `zwzzz/Chinese-MentalBERT`.
 ## Quick start
 
 ```bash
-git clone <this-repo> && cd matcha-bench
+git clone https://github.com/shehryars715/matcha-bench.git && cd matcha-bench
 pip install -e .                      # or: pip install -r requirements.txt
 
 # 0. data (see data/README.md for MATCHA access)
@@ -179,7 +179,7 @@ The original implementation was checked against the
   title  = {MATCHA-Bench: Lexicon-Guided Domain-Adaptive Pre-training and a Leakage-Aware
             Benchmark for Multi-Disorder Mental Health Detection on Chinese Social Media},
   year   = {2026},
-  note   = {Code: https://github.com/<org>/matcha-bench}
+  note   = {Code: https://github.com/shehryars715/matcha-bench}
 }
 ```
 

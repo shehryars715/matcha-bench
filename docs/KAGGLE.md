@@ -22,18 +22,29 @@ python scripts/build_multidisorder_lexicon.py  # consensus with lexicons/llm_ann
 python scripts/build_dapt_corpus.py
 ```
 
-Then zip `data/processed`, `data/tasks`, `data/dapt` and `lexicons/`, and upload them as a
-**private** Kaggle dataset, e.g. `matcha-bench-data`.
+Then build the upload zip (only what the GPU stage needs: the DAPT corpus, the tasks and the
+lexicon word lists; raw posts, candidates and annotations stay local):
+
+```bash
+python scripts/pack_kaggle_data.py        # -> ../matcha-bench-data.zip
+```
+
+Upload it as a **private** Kaggle dataset named `matcha-bench-data` (Datasets → New Dataset).
 
 > Check the MATCHA DUA before uploading derived data to a third-party platform. Keep the
 > dataset private, and never make it public.
 
 ## 2. Get the code into the notebook
 
-Either
-- push this repo to a private GitHub repo and `git clone` it with a token stored in Kaggle
-  *Secrets*, or
-- upload the repo folder as a second private Kaggle dataset.
+The notebook clones the GitHub repo. A public repo needs no setup. For a private repo:
+
+1. GitHub → Settings → Developer settings → *Fine-grained tokens* → Generate. Give it access to
+   `matcha-bench` only, with permission **Contents: Read-only**.
+2. In the Kaggle notebook: *Add-ons → Secrets → Add*, label `GITHUB_TOKEN`, paste the token, and
+   tick it for this notebook.
+
+The notebook clones the repo with the token, then removes the token from the clone's git config,
+because `/kaggle/working` is saved as notebook output.
 
 ## 3. Run
 

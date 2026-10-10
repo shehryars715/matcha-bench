@@ -158,7 +158,13 @@ def run_dapt(cfg: dict) -> dict:
 
     if eval_ds is not None:
         metrics = trainer.evaluate()
-        metrics["perplexity"] = float(np.exp(metrics["eval_loss"])) if metrics.get("eval_loss") is not None else None
+        # On n_gpu > 1 with average_tokens_across_devices, transformers reports the loss x n_gpu
+        # (training itself is left unchanged so all DAPT variants stay comparable).
+        scale = n_gpu if n_gpu > 1 and getattr(args, "average_tokens_across_devices", False) else 1
+        metrics["loss_scale"] = scale
+        if metrics.get("eval_loss") is not None:
+            metrics["eval_loss_true"] = metrics["eval_loss"] / scale
+            metrics["perplexity"] = float(np.exp(metrics["eval_loss_true"]))
         info["eval_metrics"] = metrics
 
     final = Path(out_dir) / "final"

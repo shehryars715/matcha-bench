@@ -8,6 +8,7 @@ significance tests can be run afterwards.
 
 from __future__ import annotations
 
+import dataclasses
 import shutil
 from pathlib import Path
 
@@ -129,6 +130,11 @@ def run_finetune(
         report_to="none",
         seed=seed,
     )
+    # With DataParallel (2 GPUs) some transformers versions multiply the loss by n_gpu when
+    # average_tokens_across_devices is on, although BERT's loss is already a per-replica mean.
+    # Turning it off gives identical training on 1 or 2 GPUs.
+    if any(f.name == "average_tokens_across_devices" for f in dataclasses.fields(TrainingArguments)):
+        args.average_tokens_across_devices = False
     callbacks = [EarlyStoppingCallback(hp["early_stopping_patience"])] if hp.get("early_stopping_patience") else []
     trainer = WeightedLossTrainer(
         model=model,

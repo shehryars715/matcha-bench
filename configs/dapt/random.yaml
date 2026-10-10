@@ -1,0 +1,4 @@
+# Control: plain whole-word masking (20%) on MATCHA. Isolates the effect of the corpus.
+base: base.yaml
+lexicon: null
+output_dir: outputs/dapt/random

@@ -1,0 +1,6 @@
+# Raw MATCHA -> cleaned posts, users and global user-level splits.
+matcha_root: null            # null -> $MATCHA_ROOT, else ./MATCHA_Multi-Disorder_mental_health_daTa_in_CHinA
+processed_dir: data/processed
+seed: 42
+split_ratios: [0.7, 0.1, 0.2] # train / dev / test, stratified by cohort (multi-cohort users = own stratum)
+min_chars: 2                  # drop posts shorter than this after cleaning

@@ -1,0 +1,17 @@
+# Shared DAPT corpus cache (built once, used by every masking variant).
+processed_dir: data/processed
+out_dir: data/dapt
+tokenizer: hfl/chinese-bert-wwm-ext
+max_seq_length: 128
+train_splits: [train]          # only training-split users: downstream dev/test users stay unseen
+val_split: dev                 # held-out MLM loss / perplexity
+max_val_texts: 20000
+sources: [HP, STP]
+include_control: true
+drop_reposts: false
+max_texts: null                # set (e.g. 50000) for a quick run
+num_workers: 4                 # parallel jieba + tokenizer workers
+# All lexicons are added to jieba's dictionary so segmentation is identical for every variant.
+userdict_lexicons:
+  - lexicons/lexicon_depression.txt
+  - lexicons/lexicon_deepseek.txt

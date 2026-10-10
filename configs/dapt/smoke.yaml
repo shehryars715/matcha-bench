@@ -1,0 +1,16 @@
+# CPU smoke test: tiny randomly-initialised BERT, a few hundred chunks, 20 steps.
+# Checks the whole pipeline end-to-end in minutes; the numbers it produces mean nothing.
+base: base.yaml
+lexicon: lexicons/lexicon_depression.txt
+output_dir: outputs/dapt/smoke
+tiny_model: true
+max_train_chunks: 2000
+max_eval_chunks: 200
+training:
+  effective_batch_size: 16
+  per_device_train_batch_size: 16
+  max_steps: 20
+  logging_steps: 5
+  save_steps: 10
+  eval_steps: 10
+  dataloader_num_workers: 0

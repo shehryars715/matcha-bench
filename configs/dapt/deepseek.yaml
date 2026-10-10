@@ -1,0 +1,4 @@
+# Extension: multi-disorder lexicon mined from MATCHA and filtered by DeepSeek.
+base: base.yaml
+lexicon: lexicons/lexicon_deepseek.txt
+output_dir: outputs/dapt/deepseek

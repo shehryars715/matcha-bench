@@ -1,0 +1,34 @@
+# Fine-tuning protocol. Defaults follow Chinese MentalBERT (lr 2e-5, batch 16, <=10 epochs,
+# best-dev checkpoint evaluated on test). Every run is repeated over `seeds`.
+task_root: data/tasks
+output_root: outputs/finetune
+seeds: [42, 43, 44]
+
+# tag -> Hugging Face id or local path
+models:
+  bert-base-chinese: bert-base-chinese
+  bert-wwm-ext: hfl/chinese-bert-wwm-ext
+  chinese-mentalbert: zwzzz/Chinese-MentalBERT
+  matcha-random: outputs/dapt/random/final
+  matcha-depression: outputs/dapt/depression/final
+  matcha-deepseek: outputs/dapt/deepseek/final
+
+defaults:
+  epochs: 10
+  learning_rate: 2.0e-5
+  batch_size: 16
+  grad_accum: 1
+  warmup_ratio: 0.0
+  weight_decay: 0.0
+  early_stopping_patience: 3     # stops after 3 epochs without dev improvement (best-dev selection is unchanged)
+  class_weight: null
+  max_length: null               # null -> task default (128 post-level, 512 user-level)
+  keep_checkpoints: false
+
+task_overrides:
+  matcha_disorder_post: {class_weight: balanced}
+  matcha_disorder_post_masked: {class_weight: balanced}
+  matcha_user_binary: {epochs: 6, early_stopping_patience: 2}
+  matcha_user_binary_masked: {epochs: 6, early_stopping_patience: 2}
+  matcha_user_multiclass: {epochs: 6, early_stopping_patience: 2, class_weight: balanced}
+  matcha_user_multiclass_masked: {epochs: 6, early_stopping_patience: 2, class_weight: balanced}

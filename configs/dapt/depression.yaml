@@ -1,0 +1,4 @@
+# Faithful reproduction: Chinese MentalBERT's depression lexicon (Li et al., 2020) on MATCHA.
+base: base.yaml
+lexicon: lexicons/lexicon_depression.txt
+output_dir: outputs/dapt/depression

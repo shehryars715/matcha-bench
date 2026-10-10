@@ -1,0 +1,27 @@
+# Continued pre-training, matching Chinese MentalBERT (Zhai et al., 2024, Sec. 3):
+# chinese-bert-wwm-ext, 3 epochs, batch 128, lr 5e-5, 128-token chunks, 20% whole-word masking.
+model_name_or_path: hfl/chinese-bert-wwm-ext
+corpus_cache: data/dapt
+lexicon: null                    # null = random whole-word masking (the paper's control)
+lexicon_order: sequential        # sequential (as in the reference code) | random
+mlm_probability: 0.20
+output_dir: outputs/dapt/random
+seed: 42
+tiny_model: false
+max_train_chunks: null
+max_eval_chunks: 5000
+
+training:
+  num_train_epochs: 3
+  effective_batch_size: 128      # per_device x n_gpu x grad_accum (accum computed automatically)
+  per_device_train_batch_size: 64
+  learning_rate: 5.0e-5
+  warmup_ratio: 0.0
+  weight_decay: 0.0
+  max_steps: -1
+  logging_steps: 100
+  save_steps: 1000
+  eval_steps: 2000
+  save_total_limit: 2
+  dataloader_num_workers: 2
+  fp16: true

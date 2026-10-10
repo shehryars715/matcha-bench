@@ -29,7 +29,7 @@ splits or baselines.
 This repository connects the two:
 
 1. **Reproduction.** Lexicon-guided DAPT is re-run on an open, gated corpus (MATCHA) and evaluated on the
-   public downstream tasks from the ACL paper.
+   public downstream tasks from the Chinese MentalBERT paper.
 2. **Extension.** A **multi-disorder lexicon** is mined from MATCHA with log-odds statistics and
    kept only where two independent LLM annotators agree ([details](docs/LEXICON.md)). It is compared against random masking and the original
    depression lexicon.
@@ -43,7 +43,7 @@ This repository connects the two:
 flowchart LR
     A[MATCHA raw CSVs] --> B[prepare_matcha<br/>clean · dedup · user splits]
     B --> C[build_tasks<br/>7 MATCHA tasks]
-    D[ACL public datasets] --> C2[build_tasks<br/>5–6 ACL tasks]
+    D[Chinese MentalBERT public datasets] --> C2[build_tasks<br/>5–6 Chinese MentalBERT tasks]
     B --> E[mine_lexicon<br/>log-odds vs control]
     E --> F[LLM word filter<br/>words only, never posts]
     G[Depression lexicon<br/>Li et al. 2020] --> H
@@ -75,10 +75,10 @@ and the released `zwzzz/Chinese-MentalBERT`.
 
 | Task | Level | Labels | Metric | Notes |
 |---|---|---|---|---|
-| `ewect_usual` / `ewect_epidemic` | post | 6 emotions | macro-F1 | SMP2020-EWECT (ACL paper) |
-| `waimai` | post | 2 | binary F1 | food-delivery reviews (ACL paper) |
-| `cognitive` | post | 12 (multi-label) | micro-F1 | SocialCD-3K (ACL paper) |
-| `suicide` | post | 2 | binary F1 | SOS-HL-1K (ACL paper) |
+| `ewect_usual` / `ewect_epidemic` | post | 6 emotions | macro-F1 | SMP2020-EWECT (Chinese MentalBERT) |
+| `waimai` | post | 2 | binary F1 | food-delivery reviews (Chinese MentalBERT) |
+| `cognitive` | post | 12 (multi-label) | micro-F1 | SocialCD-3K (Chinese MentalBERT) |
+| `suicide` | post | 2 | binary F1 | SOS-HL-1K (Chinese MentalBERT) |
 | `c2d2` | post | 8 | macro-F1 | optional; data shared on request |
 | `matcha_ip_post` | post | 2 | binary F1 | explicit self-report of diagnosis or treatment |
 | `matcha_disorder_post` (+`_masked`) | post | 7 | macro-F1 | which disorder community a post comes from |
@@ -101,7 +101,7 @@ pip install -e .                      # or: pip install -r requirements.txt
 
 # 0. data (see data/README.md for MATCHA access)
 python scripts/prepare_matcha.py                 # clean + user-level splits
-python scripts/download_acl_data.py              # public ACL downstream datasets
+python scripts/download_acl_data.py              # public Chinese MentalBERT downstream datasets
 python scripts/build_tasks.py                    # all tasks -> data/tasks/
 
 # 1. lexicons
@@ -153,7 +153,7 @@ The original implementation was checked against the
 ├── configs/                 YAML configs (data, tasks, lexicon, corpus, dapt/*, finetune)
 ├── src/matcha_bench/
 │   ├── data/                MATCHA loading, cleaning, user-level splits
-│   ├── tasks/               MATCHA and ACL task builders (one shared on-disk format)
+│   ├── tasks/               MATCHA and Chinese MentalBERT task builders (one shared on-disk format)
 │   ├── lexicon/             depression lexicon, log-odds mining, word filtering
 │   ├── pretrain/            corpus packing, lexicon-guided WWM collator, DAPT trainer
 │   ├── finetune/            fine-tuning runner and metrics

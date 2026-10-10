@@ -1,6 +1,6 @@
 """Significance testing and aggregation over seeds.
 
-The ACL paper reports single runs with no variance. Here every number is mean ± std over seeds,
+The Chinese MentalBERT paper reports single runs with no variance. Here every number is mean ± std over seeds,
 and model pairs are compared with a paired bootstrap on the shared test set.
 """
 

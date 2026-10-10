@@ -21,7 +21,7 @@ homepage timelines (HP), and a Qwen3 model marks "identified positive" users who
 self-report. The paper is descriptive only (LIWC, symptoms, life events, a comparison with
 Twitter-STMHD). It releases **no tasks, splits or baselines**.
 
-## 2. Every way to "reproduce the ACL paper with MATCHA"
+## 2. Every way to "reproduce Chinese MentalBERT with MATCHA"
 
 | # | Approach | What changes | Novelty | Cost | Verdict |
 |---|---|---|---|---|---|
@@ -45,7 +45,7 @@ extension of lexicon-guided domain-adaptive pre-training."*
 |---|---|
 | Compute | Kaggle with phone verification (free T4/P100, about 30 GPU-h/week). CPU-heavy steps run locally. |
 | Paper focus | Benchmark first; DAPT variants are a model family inside it. |
-| Evaluation | The ACL public tasks plus 7 MATCHA tasks (including masked variants). |
+| Evaluation | The public Chinese MentalBERT tasks plus 7 MATCHA tasks (including masked variants). |
 | Lexicon | Hybrid: log-odds mining on MATCHA train users, then single-pass LLM filtering of the words (no API key needed). The DeepSeek 3-vote filter remains available. |
 | Models | TF-IDF, bert-base-chinese, chinese-bert-wwm-ext, Chinese MentalBERT, and 3 MATCHA-DAPT variants. |
 | Repo | Local git first; pushed to GitHub after review. |
@@ -85,7 +85,7 @@ These are estimates; replace them with timings from the first real run.
 | Stage | Runs | Per run | Total |
 |---|---|---|---|
 | DAPT (1.01M train posts = 35.3M tokens = 281k chunks × 3 epochs, measured) | 3 | 1–2 h | 3–6 h |
-| Fine-tune: ACL tasks (5) | 6 models × 3 seeds | ≈ 45 min | ≈ 14 h |
+| Fine-tune: Chinese MentalBERT tasks (5) | 6 models × 3 seeds | ≈ 45 min | ≈ 14 h |
 | Fine-tune: MATCHA tasks (7) | 6 models × 3 seeds | ≈ 1–1.5 h | ≈ 20–25 h |
 | **Total** | | | **≈ 40–50 GPU-h ≈ 2 weeks of Kaggle quota** |
 
@@ -99,15 +99,15 @@ CPU-only steps can run on a laptop: data preparation, task building, mining, cor
 ## 6. Experiment matrix and expected findings
 
 1. **Corpus effect:** `matcha-random` vs `bert-wwm-ext`. Expect gains on the mental-health tasks.
-2. **Lexicon effect (reproduction):** `matcha-depression` vs `matcha-random`. Does the ACL claim hold on an
+2. **Lexicon effect (reproduction):** `matcha-depression` vs `matcha-random`. Does the Chinese MentalBERT claim hold on an
    open corpus with seeds and significance tests?
 3. **Multi-disorder lexicon:** `matcha-multidisorder` vs `matcha-depression`. Expect the largest gap on
    non-depression MATCHA tasks (BD, OCD, SZ per-class F1).
 4. **Shortcut reliance:** every model, raw vs `_masked`. The size of the drop shows how much is keyword
    matching. Does DAPT reduce that reliance?
-5. **Cross-corpus check:** `chinese-mentalbert` (private corpus) vs `matcha-*` on the ACL tasks.
+5. **Cross-corpus check:** `chinese-mentalbert` (private corpus) vs `matcha-*` on the Chinese MentalBERT tasks.
 6. **Analysis:** lexicon coverage, the category mix of the multi-disorder lexicon, fill-mask probes on
-   SCL-90 items (as in the ACL paper's Table 5), per-gender error rates.
+   SCL-90 items (as in the Chinese MentalBERT paper's Table 5), per-gender error rates.
 
 ### Preliminary observations (local CPU runs, 2026-10-11)
 
@@ -116,12 +116,12 @@ These come from the first local runs. They are not final results.
 - **Cleaning:** 1,882,257 raw rows → 1,507,148 posts (1,439,838 unique notes) from 41,747 users.
   766 control users also post in disorder communities and were removed from the control group.
   2,677 users belong to more than one disorder cohort.
-- **ACL task splits** match the paper exactly for Waimai (9,589/1,199/1,199) and Cognitive
+- **Chinese MentalBERT task splits** match the paper exactly for Waimai (9,589/1,199/1,199) and Cognitive
   (2,180/545/682), and within 1% for EWECT and Suicide.
 - **The depression lexicon covers little of MATCHA.** 601 of its 1,470 words occur in a 20k-post
   sample. Only 43% of 128-token chunks contain a lexicon word, and lexicon words fill only
   **≈ 8% of the masking budget**; the rest is random top-up. This may explain the small
-  guided-vs-random gains in the ACL paper, and it motivates a larger, multi-disorder lexicon.
+  guided-vs-random gains in the Chinese MentalBERT paper, and it motivates a larger, multi-disorder lexicon.
 - **Mining:** 9,307 (disorder, word) candidates, 4,269 unique.
 - **Multi-disorder lexicon (see `docs/LEXICON.md`):** annotator A kept 526 words, DeepSeek kept 1,439
   (3 votes, $0.26). The consensus lexicon (both keep) has **520 words**. Word-level κ = 0.43,
@@ -129,7 +129,7 @@ These come from the first local runs. They are not final results.
   **17.3% of the masking budget vs 10.3%** for the depression lexicon (62.8% vs 53.4% of chunks).
 - **Shortcut effect (TF-IDF baseline):** `matcha_disorder_post` macro-F1 is **48.8**, but only **39.6**
   once disorder and drug names are masked. Keywords carry a large share of the signal.
-- TF-IDF on the ACL tasks: Suicide F1 75.4, Cognitive micro-F1 63.1. The paper reports
+- TF-IDF on the Chinese MentalBERT tasks: Suicide F1 75.4, Cognitive micro-F1 63.1. The paper reports
   Word2vec-CNN at 82.4 and 68.6.
 
 ## 7. Paper outline (target: ACL/EMNLP Findings or the CLPsych workshop)
@@ -139,7 +139,7 @@ These come from the first local runs. They are not final results.
 3. MATCHA-Bench: cleaning, contamination, splits, tasks, masked variants, statistics.
 4. Lexicon-guided DAPT: the method, the depression lexicon, multi-disorder mining and LLM filtering.
 5. Experimental setup: models, protocol, seeds, significance testing.
-6. Results: ACL tasks (reproduction), MATCHA tasks, raw vs masked.
+6. Results: Chinese MentalBERT tasks (reproduction), MATCHA tasks, raw vs masked.
 7. Analysis: lexicon coverage, per-disorder results, fill-mask probes, fairness.
 8. Limitations and ethics.
 
@@ -147,7 +147,7 @@ These come from the first local runs. They are not final results.
 
 - [ ] Confirm with the MATCHA authors whether the DUA allows (a) a private Kaggle dataset copy,
       (b) releasing split IDs, and (c) releasing the mined lexicon.
-- [ ] Request C2D2 from its authors to complete the six ACL tasks.
+- [ ] Request C2D2 from its authors to complete the six Chinese MentalBERT tasks.
 - [x] Second-annotator check of the multi-disorder lexicon with DeepSeek (Cohen's κ; `docs/LEXICON.md`).
 - [ ] Optional: a human spot-check, if a Chinese-speaking annotator becomes available.
 - [ ] State in the paper which LLM did the word filtering (model name and date).

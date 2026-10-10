@@ -1,4 +1,4 @@
-"""Step 2: build downstream tasks (MATCHA-derived and ACL) into data/tasks/<name>/."""
+"""Step 2: build downstream tasks (MATCHA-derived and Chinese MentalBERT) into data/tasks/<name>/."""
 
 import argparse
 

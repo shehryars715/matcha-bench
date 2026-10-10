@@ -1,4 +1,4 @@
-"""A single on-disk format for every downstream task (MATCHA and ACL alike).
+"""A single on-disk format for every downstream task (MATCHA and Chinese MentalBERT alike).
 
     data/tasks/<name>/
         meta.json        problem_type, label_names, average, ...

@@ -19,9 +19,10 @@ mining:
 multidisorder:
   annotations: lexicons/llm_annotations.csv
   annotated_candidates: lexicons/multidisorder_annotations.csv
+  consensus_with: lexicons/deepseek_annotations.csv   # keep only words both annotators keep (null = annotator A alone)
   output: lexicons/lexicon_multidisorder.txt
   exclude_categories: []            # e.g. [clinical] to drop diagnosis / medication terms
-  header: "MATCHA multi-disorder lexicon: log-odds mining + LLM-annotated word filtering"
+  header: "MATCHA multi-disorder lexicon: log-odds mining + consensus of two LLM annotators"
 
 # 3') Optional alternative filter: DeepSeek API, 3 votes (only words are sent, never posts).
 deepseek:
@@ -30,6 +31,7 @@ deepseek:
   temperature: 0.7
   votes: 3                          # majority vote; agreement rate is reported
   batch_size: 100
+  max_workers: 8                    # concurrent API calls
   price_per_m_input: 0.28           # USD per 1M tokens: verify on the DeepSeek pricing page
   price_per_m_output: 0.42
   exclude_categories: []            # e.g. [clinical] to drop diagnosis / medication terms

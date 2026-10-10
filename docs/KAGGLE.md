@@ -17,7 +17,8 @@ python scripts/download_acl_data.py
 python scripts/build_tasks.py
 python scripts/build_depression_lexicon.py
 python scripts/mine_lexicon.py
-python scripts/build_multidisorder_lexicon.py  # needs lexicons/llm_annotations.csv
+python scripts/filter_lexicon_deepseek.py      # annotator B, key in .env (~$0.26)
+python scripts/build_multidisorder_lexicon.py  # consensus with lexicons/llm_annotations.csv
 python scripts/build_dapt_corpus.py
 ```
 

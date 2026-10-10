@@ -9,9 +9,11 @@ the MATCHA DUA before releasing the word lists themselves.
 | `lexicon_depression.txt` | `scripts/build_depression_lexicon.py` | Chinese depression-domain lexicon (Li et al., 2020), filtered exactly as in the Chinese MentalBERT code (抑郁倾向 = 1, Chinese characters only). 1,470 words. |
 | `candidates.csv` | `scripts/mine_lexicon.py` | Per-disorder words over-represented relative to clean controls (log-odds with informative Dirichlet prior; z ≥ 3; used by ≥ 5 distinct users). |
 | `llm_annotations.csv` | LLM annotator (single pass over the 4,269 unique candidates) | `word,category` for every word judged mental-health related; anything not listed is rejected. |
+| `annotation_agreement*.{json,csv}` | `scripts/compare_lexicon_annotations.py` | Cohen's κ between annotators and the list of disagreements. |
+| `MATCHA_multidisorder_lexicon_520_words.md` | one-off export | The 520 words with English meanings, for sharing with collaborators. |
 | `multidisorder_annotations.csv` | `scripts/build_multidisorder_lexicon.py` | Every (disorder, candidate) row with its keep decision and category. |
-| `lexicon_multidisorder.txt` | same | **The multi-disorder lexicon used for masking** (526 words; union across the 7 disorders). |
-| `deepseek_*.{jsonl,csv}`, `lexicon_deepseek.txt` | `scripts/filter_lexicon_deepseek.py` | Optional alternative filter: DeepSeek, 3 votes per word, cached. |
+| `lexicon_multidisorder.txt` | same | **The multi-disorder lexicon used for masking**: words kept by both annotators (520 words; union across the 7 disorders). |
+| `deepseek_*.{jsonl,csv}`, `lexicon_deepseek.txt` | `scripts/filter_lexicon_deepseek.py` | Annotator B: DeepSeek, 3 votes per (disorder, word), cached. Its own lexicon (1,439 words) is an optional ablation. |
 
 Format: one word per line, UTF-8, `#` starts a comment line.
 Categories: `emotion`, `cognition`, `somatic`, `behavior`, `clinical`, `community`, `social`.

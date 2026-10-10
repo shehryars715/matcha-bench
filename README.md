@@ -31,7 +31,7 @@ This repository connects the two:
 1. **Reproduction.** Lexicon-guided DAPT is re-run on an open, gated corpus (MATCHA) and evaluated on the
    public downstream tasks from the ACL paper.
 2. **Extension.** A **multi-disorder lexicon** is mined from MATCHA with log-odds statistics and
-   filtered word by word by an LLM annotator. It is compared against random masking and the original
+   kept only where two independent LLM annotators agree ([details](docs/LEXICON.md)). It is compared against random masking and the original
    depression lexicon.
 3. **Benchmark.** The first detection tasks on MATCHA, built with **user-level splits**, **contaminated-control
    removal** and **shortcut-masked variants** that hide disorder and drug names. Every number is
@@ -66,7 +66,7 @@ hyper-parameters, so they differ only in mask selection.
 |---|---|---|---|
 | `matcha-random` | whole-word, 20% | none | effect of the corpus alone |
 | `matcha-depression` | lexicon-guided, 20% | Li et al. (2020), 1,470 words | faithful reproduction |
-| `matcha-multidisorder` | lexicon-guided, 20% | MATCHA-mined + LLM-filtered, 7 disorders, 526 words | **extension** |
+| `matcha-multidisorder` | lexicon-guided, 20% | MATCHA-mined, 2-LLM consensus, 7 disorders, 520 words | **extension** |
 
 **Baselines.** `tfidf-lr` (char 1–3-gram), `bert-base-chinese`, `hfl/chinese-bert-wwm-ext`,
 and the released `zwzzz/Chinese-MentalBERT`.
@@ -107,8 +107,9 @@ python scripts/build_tasks.py                    # all tasks -> data/tasks/
 # 1. lexicons
 python scripts/build_depression_lexicon.py       # faithful lexicon
 python scripts/mine_lexicon.py                   # candidates from MATCHA (local)
-python scripts/build_multidisorder_lexicon.py     # from lexicons/llm_annotations.csv
-# optional alternative filter: DEEPSEEK_API_KEY=sk-... python scripts/filter_lexicon_deepseek.py
+python scripts/filter_lexicon_deepseek.py         # annotator B (key in .env), about $0.26
+python scripts/compare_lexicon_annotations.py     # Cohen's kappa between annotators A and B
+python scripts/build_multidisorder_lexicon.py     # consensus of A and B -> 520-word lexicon
 
 # 2. pre-training (GPU)
 python scripts/build_dapt_corpus.py              # shared cache, train users only
@@ -158,7 +159,7 @@ The original implementation was checked against the
 ├── scripts/                 one CLI per pipeline step
 ├── notebooks/               Kaggle notebook
 ├── tests/                   unit tests (offline, synthetic data)
-└── docs/                    research plan, Kaggle guide
+└── docs/                    research plan, lexicon construction, Kaggle guide
 ```
 
 ## Ethics and data use

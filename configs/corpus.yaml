@@ -15,4 +15,4 @@ num_workers: 4                 # parallel jieba + tokenizer workers
 userdict_lexicons:
   - lexicons/lexicon_depression.txt
   - lexicons/lexicon_multidisorder.txt
-  - lexicons/lexicon_deepseek.txt     # optional; if added later, rebuild the cache and re-run every variant
+  # - lexicons/lexicon_deepseek.txt   # only for the optional inclusive-lexicon ablation; rebuild the cache if enabled

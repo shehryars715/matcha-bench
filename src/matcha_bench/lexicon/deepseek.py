@@ -6,20 +6,26 @@ passed a k-anonymity filter (>= min_users distinct authors) in ``mine.py``.
 Each (disorder, word) pair is judged ``votes`` times at a non-zero temperature. A word is kept
 on a majority vote, and the agreement rate is recorded so the lexicon's stability can be
 reported. All responses are cached in a JSONL file, so interrupted runs resume for free and
-re-runs cost nothing.
+re-runs cost nothing. Batches are sent concurrently (``max_workers``).
+
+The API key is read from $DEEPSEEK_API_KEY, or from a git-ignored ``.env`` file at the repo root
+(one line: ``DEEPSEEK_API_KEY=sk-...``), so it never appears in commands or tracked files.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pandas as pd
 import requests
 
+from ..config import REPO_ROOT
 from ..data.matcha import DISORDER_NAMES
 from ..utils import get_logger
 
@@ -55,6 +61,17 @@ Words:
 {words}"""
 
 
+def _key_from_dotenv(name: str = "DEEPSEEK_API_KEY") -> str | None:
+    env_file = REPO_ROOT / ".env"
+    if not env_file.exists():
+        return None
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        key, sep, value = line.strip().partition("=")
+        if sep and key.strip() == name:
+            return value.strip().strip('"').strip("'")
+    return None
+
+
 class DeepSeekClient:
     def __init__(
         self,
@@ -65,12 +82,13 @@ class DeepSeekClient:
         timeout: int = 120,
         max_retries: int = 5,
     ):
-        self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY")
+        self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY") or _key_from_dotenv()
         if not self.api_key:
-            raise RuntimeError("Set DEEPSEEK_API_KEY (e.g. in a local .env file or Kaggle secret).")
+            raise RuntimeError("Set DEEPSEEK_API_KEY, or put DEEPSEEK_API_KEY=sk-... in the repo's .env file.")
         self.model, self.base_url = model, base_url.rstrip("/")
         self.temperature, self.timeout, self.max_retries = temperature, timeout, max_retries
         self.usage = Counter()
+        self._lock = threading.Lock()
 
     def chat_json(self, system: str, user: str) -> dict:
         body = {
@@ -88,9 +106,10 @@ class DeepSeekClient:
                 r.raise_for_status()
                 payload = r.json()
                 usage = payload.get("usage", {})
-                self.usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
-                self.usage["completion_tokens"] += usage.get("completion_tokens", 0)
-                self.usage["calls"] += 1
+                with self._lock:
+                    self.usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+                    self.usage["completion_tokens"] += usage.get("completion_tokens", 0)
+                    self.usage["calls"] += 1
                 return json.loads(payload["choices"][0]["message"]["content"])
             except (requests.RequestException, json.JSONDecodeError, KeyError) as exc:
                 wait = 2 ** attempt
@@ -142,29 +161,39 @@ def filter_with_deepseek(
     *,
     votes: int = 3,
     batch_size: int = 100,
+    max_workers: int = 8,
 ) -> pd.DataFrame:
     cache_path = Path(cache_path)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache = _load_cache(cache_path)
     model = client.model
 
-    with open(cache_path, "a", encoding="utf-8") as fout:
-        for disorder, group in candidates.groupby("disorder"):
-            words = group["word"].tolist()
-            for vote in range(votes):
-                pending = [w for w in words if (model, PROMPT_VERSION, disorder, w, vote) not in cache]
-                for i in range(0, len(pending), batch_size):
-                    batch = pending[i : i + batch_size]
-                    parsed = parse_items(client.chat_json(SYSTEM_PROMPT, build_prompt(disorder, batch)), batch)
-                    for w in batch:
-                        keep, cat = parsed.get(w, (0, "missing"))
-                        cache[(model, PROMPT_VERSION, disorder, w, vote)] = (keep, cat)
-                        fout.write(json.dumps({
-                            "model": model, "prompt_version": PROMPT_VERSION, "disorder": disorder,
-                            "word": w, "vote": vote, "keep": keep, "category": cat,
-                        }, ensure_ascii=False) + "\n")
-                    fout.flush()
-                    log.info("%s vote %d: %d/%d words judged", disorder, vote, min(i + batch_size, len(pending)), len(pending))
+    jobs = []
+    for disorder, group in candidates.groupby("disorder"):
+        words = group["word"].tolist()
+        for vote in range(votes):
+            pending = [w for w in words if (model, PROMPT_VERSION, disorder, w, vote) not in cache]
+            jobs += [(disorder, vote, pending[i : i + batch_size]) for i in range(0, len(pending), batch_size)]
+    log.info("%d API calls to make (%d workers)", len(jobs), max_workers)
+
+    def run(job):
+        disorder, vote, batch = job
+        return job, parse_items(client.chat_json(SYSTEM_PROMPT, build_prompt(disorder, batch)), batch)
+
+    with open(cache_path, "a", encoding="utf-8") as fout, ThreadPoolExecutor(max_workers) as pool:
+        futures = [pool.submit(run, job) for job in jobs]
+        for done, future in enumerate(as_completed(futures), 1):
+            (disorder, vote, batch), parsed = future.result()
+            for w in batch:
+                keep, cat = parsed.get(w, (0, "missing"))
+                cache[(model, PROMPT_VERSION, disorder, w, vote)] = (keep, cat)
+                fout.write(json.dumps({
+                    "model": model, "prompt_version": PROMPT_VERSION, "disorder": disorder,
+                    "word": w, "vote": vote, "keep": keep, "category": cat,
+                }, ensure_ascii=False) + "\n")
+            fout.flush()
+            if done % 20 == 0 or done == len(jobs):
+                log.info("%d/%d calls done", done, len(jobs))
 
     rows = []
     for disorder, word in zip(candidates["disorder"], candidates["word"]):

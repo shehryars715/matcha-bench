@@ -66,11 +66,17 @@ Prices were about $0.2–0.6 per 1M input tokens and $0.4–2.2 per 1M output to
 2026, depending on the model. Check the official pricing page and update `configs/lexicon.yaml`.
 `--dry-run` prints the estimate before anything is spent.
 
-For the paper, the lexicon also needs validation:
-- vote agreement, which is logged;
-- a human spot-check of about 200 words;
-- the share of the masking budget the lexicon fills, logged in `run_info.json`;
-- optionally, a second LLM (e.g. Qwen) to measure inter-model agreement.
+**Validation without human annotators.** No human annotators are available, so the lexicon is
+validated in three ways:
+- **Two independent LLM annotators.** The primary single-pass word filter (annotator A) is compared against
+  DeepSeek (3 votes per (disorder, word), majority). Cohen's κ, percent agreement and the
+  disagreement list come from `scripts/compare_lexicon_annotations.py`.
+- **DeepSeek self-consistency.** The 3-vote agreement rate is logged.
+- **Downstream evidence.** The share of the masking budget each lexicon fills is logged in
+  `run_info.json`. An optional unfiltered-candidates DAPT variant would show whether the
+  filtering itself matters.
+
+The Limitations section should state that the lexicon was LLM-filtered and not human-verified.
 
 ## 5. Compute budget (Kaggle T4)
 
@@ -78,7 +84,7 @@ These are estimates; replace them with timings from the first real run.
 
 | Stage | Runs | Per run | Total |
 |---|---|---|---|
-| DAPT (1.01M train posts ≈ 49M tokens ≈ 390k chunks × 3 epochs) | 3 | 1.5–3 h | 5–9 h |
+| DAPT (1.01M train posts = 35.3M tokens = 281k chunks × 3 epochs, measured) | 3 | 1–2 h | 3–6 h |
 | Fine-tune: ACL tasks (5) | 6 models × 3 seeds | ≈ 45 min | ≈ 14 h |
 | Fine-tune: MATCHA tasks (7) | 6 models × 3 seeds | ≈ 1–1.5 h | ≈ 20–25 h |
 | **Total** | | | **≈ 40–50 GPU-h ≈ 2 weeks of Kaggle quota** |
@@ -117,10 +123,10 @@ These come from the first local runs. They are not final results.
   **≈ 8% of the masking budget**; the rest is random top-up. This may explain the small
   guided-vs-random gains in the ACL paper, and it motivates a larger, multi-disorder lexicon.
 - **Mining:** 9,307 (disorder, word) candidates, 4,269 unique.
-- **Multi-disorder lexicon:** single-pass LLM filtering kept **526 words** (emotion, cognition,
-  somatic, behavior, clinical, community and social). It is a third of the size of the depression
-  lexicon but fills **13.6% of the masking budget vs 7.4%**, and appears in 51% vs 42% of chunks
-  (20k-post sample). (The DeepSeek 3-vote alternative was estimated at $0.33.)
+- **Multi-disorder lexicon (see `docs/LEXICON.md`):** annotator A kept 526 words, DeepSeek kept 1,439
+  (3 votes, $0.26). The consensus lexicon (both keep) has **520 words**. Word-level κ = 0.43,
+  pair-level κ = 0.56, and 98.9% of A's words were confirmed by DeepSeek. On the full corpus it fills
+  **17.3% of the masking budget vs 10.3%** for the depression lexicon (62.8% vs 53.4% of chunks).
 - **Shortcut effect (TF-IDF baseline):** `matcha_disorder_post` macro-F1 is **48.8**, but only **39.6**
   once disorder and drug names are masked. Keywords carry a large share of the signal.
 - TF-IDF on the ACL tasks: Suicide F1 75.4, Cognitive micro-F1 63.1. The paper reports
@@ -142,8 +148,8 @@ These come from the first local runs. They are not final results.
 - [ ] Confirm with the MATCHA authors whether the DUA allows (a) a private Kaggle dataset copy,
       (b) releasing split IDs, and (c) releasing the mined lexicon.
 - [ ] Request C2D2 from its authors to complete the six ACL tasks.
-- [ ] Human spot-check of the multi-disorder lexicon (2 annotators on all 526 kept words plus ~300
-      rejected ones; report κ against the LLM decisions).
+- [x] Second-annotator check of the multi-disorder lexicon with DeepSeek (Cohen's κ; `docs/LEXICON.md`).
+- [ ] Optional: a human spot-check, if a Chinese-speaking annotator becomes available.
 - [ ] State in the paper which LLM did the word filtering (model name and date).
 - [ ] Replace the compute estimates in §5 with measured times.
 - [ ] Optional: a Qwen2.5-7B LoRA baseline on the post-level tasks.

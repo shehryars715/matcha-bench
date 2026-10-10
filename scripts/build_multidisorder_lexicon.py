@@ -2,7 +2,9 @@
 lexicon used for masking.
 
 The annotation file is a CSV with columns ``word,category`` that lists every candidate judged to
-be mental-health related. Categories: emotion, cognition, somatic, behavior, clinical,
+be mental-health related. If ``consensus_with`` is set (a second annotator's
+``disorder,word,keep`` file, e.g. the DeepSeek votes), a word is kept only if both annotators keep
+it (the second annotator for at least one disorder). Categories: emotion, cognition, somatic, behavior, clinical,
 community, social. It can come from an LLM annotator, a human annotator, or
 ``filter_lexicon_deepseek.py`` (rows with keep == 1).
 """
@@ -30,6 +32,14 @@ def main():
     annotated, unmatched = apply_word_annotations(candidates, annotations)
     if unmatched:
         print(f"warning: {len(unmatched)} annotated words are not candidates: {' '.join(unmatched[:30])}")
+
+    if md.get("consensus_with"):
+        second = pd.read_csv(resolve_path(md["consensus_with"]))
+        agreed = set(second.loc[second["keep"] == 1, "word"])
+        dropped = sorted(set(annotated.loc[annotated["keep"] == 1, "word"]) - agreed)
+        annotated["keep"] = (annotated["keep"] == 1) & annotated["word"].isin(agreed)
+        annotated["keep"] = annotated["keep"].astype(int)
+        print(f"consensus: dropped {len(dropped)} words the second annotator rejected: {' '.join(dropped)}")
 
     kept = annotated[(annotated["keep"] == 1) & ~annotated["category"].isin(md.get("exclude_categories") or [])]
     annotated.to_csv(resolve_path(md["annotated_candidates"]), index=False, encoding="utf-8")

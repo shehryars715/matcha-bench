@@ -32,7 +32,9 @@ def main():
         return
 
     client = DeepSeekClient(model=ds["model"], base_url=ds["base_url"], temperature=ds["temperature"])
-    ann = filter_with_deepseek(cands, client, resolve_path(ds["cache"]), votes=ds["votes"], batch_size=ds["batch_size"])
+    ann = filter_with_deepseek(
+        cands, client, resolve_path(ds["cache"]), votes=ds["votes"], batch_size=ds["batch_size"], max_workers=ds.get("max_workers", 8)
+    )
     ann.to_csv(resolve_path(ds["annotations"]), index=False, encoding="utf-8")
 
     kept = ann[(ann["keep"] == 1) & ~ann["category"].isin(ds.get("exclude_categories") or [])]

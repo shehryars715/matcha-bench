@@ -1,0 +1,173 @@
+"""Run pipeline steps on Kaggle GPUs from the command line (uses the `kaggle` CLI and ~/.kaggle/kaggle.json).
+
+    # once: upload the data zip as a private Kaggle dataset
+    python scripts/kaggle_job.py upload-data --zip ../matcha-bench-data.zip
+
+    # push a GPU job (runs headless, up to 12 h); each --cmd runs from the repo root
+    python scripts/kaggle_job.py push --name smoke --cmd "python scripts/run_dapt.py --config configs/dapt/smoke.yaml"
+    python scripts/kaggle_job.py push --name dapt-random --cmd "python scripts/run_dapt.py --config configs/dapt/random.yaml"
+
+    # fine-tune using the models produced by earlier jobs (their outputs are attached and merged)
+    python scripts/kaggle_job.py push --name ft-acl --inputs-from dapt-random dapt-depression \\
+        --cmd "python scripts/run_finetune.py --tasks suicide cognitive --models all"
+
+    python scripts/kaggle_job.py status --name smoke
+    python scripts/kaggle_job.py output --name smoke          # -> outputs/kaggle/smoke/
+
+Each job clones the public GitHub repo, links the dataset's data/ and lexicons/, copies outputs/
+from any --inputs-from jobs (so DAPT resumes and fine-tuning finds the models), runs the
+commands, and leaves everything under /kaggle/working/matcha-bench/outputs as the job output.
+"""
+
+import argparse
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+import _bootstrap  # noqa: F401
+from matcha_bench.config import REPO_ROOT
+
+GIT_URL = "https://github.com/shehryars715/matcha-bench.git"
+DATASET_SLUG = "matcha-bench-data"
+PREFIX = "matcha-bench-"
+
+JOB_TEMPLATE = r'''
+import glob, os, shutil, subprocess, sys, zipfile
+
+CONFIG = {config}
+REPO = "/kaggle/working/matcha-bench"
+
+
+def sh(cmd, cwd=None):
+    print(f"\n$ {{cmd}}", flush=True)
+    subprocess.run(cmd, shell=True, check=True, cwd=cwd)
+
+
+sh("nvidia-smi --query-gpu=name,memory.total --format=csv || true")
+sh(f"git clone --depth 1 --quiet {{CONFIG['git_url']}} {{REPO}}")
+sh("git log -1 --format='code version: %h %s'", cwd=REPO)
+sh("pip install -q jieba")
+
+# Locate the data: an extracted data/dapt folder, or the uploaded zip.
+data_root = next((os.path.dirname(os.path.dirname(p)) for p in glob.glob("/kaggle/input/**/data/dapt", recursive=True)), None)
+if data_root is None:
+    zips = glob.glob("/kaggle/input/**/*.zip", recursive=True)
+    if not zips:
+        sys.exit("No data found under /kaggle/input (attach the matcha-bench-data dataset)")
+    data_root = "/kaggle/working/input_data"
+    zipfile.ZipFile(zips[0]).extractall(data_root)
+print("data root:", data_root, flush=True)
+for name in ("data", "lexicons"):
+    target = os.path.join(REPO, name)
+    shutil.rmtree(target, ignore_errors=True)
+    os.symlink(os.path.join(data_root, name), target)
+
+# Merge outputs/ from earlier jobs (resume DAPT, find trained models, skip finished runs).
+for prev in glob.glob("/kaggle/input/**/matcha-bench/outputs", recursive=True):
+    print("restoring outputs from", prev, flush=True)
+    shutil.copytree(prev, os.path.join(REPO, "outputs"), dirs_exist_ok=True)
+
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+for cmd in CONFIG["commands"]:
+    sh(cmd, cwd=REPO)
+
+# Keep the output small: drop DAPT checkpoints once a final model exists.
+for ckpt in glob.glob(os.path.join(REPO, "outputs/dapt/*/checkpoint-*")):
+    if os.path.exists(os.path.join(os.path.dirname(ckpt), "final")):
+        shutil.rmtree(ckpt)
+shutil.rmtree("/kaggle/working/input_data", ignore_errors=True)
+sh("du -sh outputs/* || true", cwd=REPO)
+'''
+
+
+def kaggle(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, "-m", "kaggle", *args], text=True)
+
+
+def username() -> str:
+    cfg = Path.home() / ".kaggle" / "kaggle.json"
+    if not cfg.exists():
+        raise SystemExit("Missing ~/.kaggle/kaggle.json (Kaggle → Settings → API → Create New Token)")
+    return json.loads(cfg.read_text(encoding="utf-8"))["username"]
+
+
+def upload_data(args) -> None:
+    zip_path = Path(args.zip).resolve()
+    if not zip_path.exists():
+        raise SystemExit(f"{zip_path} not found; run scripts/pack_kaggle_data.py first")
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        meta = {"title": DATASET_SLUG, "id": f"{username()}/{DATASET_SLUG}", "licenses": [{"name": "other"}]}
+        (tmp / "dataset-metadata.json").write_text(json.dumps(meta), encoding="utf-8")
+        shutil.copy2(zip_path, tmp / zip_path.name)
+        if args.new_version:
+            kaggle("datasets", "version", "-p", str(tmp), "-m", args.message)
+        else:
+            kaggle("datasets", "create", "-p", str(tmp))  # private by default
+
+
+def push(args) -> None:
+    user = username()
+    slug = PREFIX + args.name
+    config = {"git_url": GIT_URL, "commands": args.cmd}
+    meta = {
+        "id": f"{user}/{slug}",
+        "title": slug,
+        "code_file": "job.py",
+        "language": "python",
+        "kernel_type": "script",
+        "is_private": "true",
+        "enable_gpu": "true" if args.gpu else "false",
+        "enable_internet": "true",
+        "dataset_sources": [f"{user}/{DATASET_SLUG}"],
+        "kernel_sources": [f"{user}/{PREFIX}{name}" for name in args.inputs_from],
+    }
+    if args.gpu:
+        meta["machine_shape"] = args.gpu
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        (tmp / "kernel-metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        (tmp / "job.py").write_text(JOB_TEMPLATE.format(config=json.dumps(config)), encoding="utf-8")
+        kaggle("kernels", "push", "-p", str(tmp))
+    print(f"https://www.kaggle.com/code/{user}/{slug}")
+
+
+def status(args) -> None:
+    kaggle("kernels", "status", f"{username()}/{PREFIX}{args.name}")
+
+
+def output(args) -> None:
+    dest = REPO_ROOT / "outputs" / "kaggle" / args.name
+    dest.mkdir(parents=True, exist_ok=True)
+    kaggle("kernels", "output", f"{username()}/{PREFIX}{args.name}", "-p", str(dest))
+    print(f"downloaded to {dest}")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="action", required=True)
+
+    up = sub.add_parser("upload-data")
+    up.add_argument("--zip", default=str(REPO_ROOT.parent / "matcha-bench-data.zip"))
+    up.add_argument("--new-version", action="store_true")
+    up.add_argument("--message", default="update data")
+
+    p = sub.add_parser("push")
+    p.add_argument("--name", required=True)
+    p.add_argument("--cmd", action="append", required=True)
+    p.add_argument("--inputs-from", nargs="*", default=[])
+    p.add_argument("--gpu", default="NvidiaTeslaT4", help="Kaggle machine_shape; '' for CPU")
+
+    for action in ("status", "output"):
+        s = sub.add_parser(action)
+        s.add_argument("--name", required=True)
+
+    args = ap.parse_args()
+    {"upload-data": upload_data, "push": push, "status": status, "output": output}[args.action](args)
+
+
+if __name__ == "__main__":
+    main()

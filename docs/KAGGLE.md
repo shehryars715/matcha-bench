@@ -27,6 +27,7 @@ lexicon word lists; raw posts, candidates and annotations stay local):
 
 ```bash
 python scripts/pack_kaggle_data.py        # -> ../matcha-bench-data.zip
+python scripts/kaggle_job.py upload-data  # or upload the zip in the Kaggle web UI
 ```
 
 Upload it as a **private** Kaggle dataset named `matcha-bench-data` (Datasets → New Dataset).
@@ -47,6 +48,20 @@ The notebook clones the repo with the token, then removes the token from the clo
 because `/kaggle/working` is saved as notebook output.
 
 ## 3. Run
+
+**From the command line (recommended).** `scripts/kaggle_job.py` pushes each step as a headless GPU
+job (T4 ×2, Internet on) and downloads its outputs:
+
+```bash
+python scripts/kaggle_job.py push --name smoke --cmd "python scripts/run_dapt.py --config configs/dapt/smoke.yaml"
+python scripts/kaggle_job.py status --name smoke
+python scripts/kaggle_job.py output --name smoke
+```
+
+Jobs listed in `--inputs-from` have their `outputs/` merged in, so DAPT resumes and fine-tuning
+finds the trained models.
+
+**Or in the browser:**
 
 Open `notebooks/kaggle_matcha_bench.ipynb` on Kaggle, attach both datasets, choose GPU T4 ×2,
 and run all cells. For long jobs use **Save Version → Save & Run All** so the job runs headless

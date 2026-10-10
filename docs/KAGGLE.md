@@ -49,6 +49,12 @@ because `/kaggle/working` is saved as notebook output.
 
 ## 3. Run the whole pipeline in resumable sessions (recommended)
 
+**In the browser:** import `notebooks/reproduce_matcha_bench.ipynb` into Kaggle, attach the
+dataset, set `MODE = "full"` and *Save & Run All*. To continue later, attach the previous version's
+output and run it again.
+
+**From the command line:**
+
 ```bash
 python scripts/kaggle_pipeline.py start      # start the next session (hard cap: budget_hours, default 9 h)
 python scripts/kaggle_pipeline.py status     # queued / running / complete

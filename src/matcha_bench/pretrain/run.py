@@ -4,11 +4,20 @@ from __future__ import annotations
 
 import math
 import random
+import time
 from pathlib import Path
 
 import numpy as np
 import torch
-from transformers import AutoModelForMaskedLM, AutoTokenizer, BertConfig, BertForMaskedLM, Trainer, TrainingArguments
+from transformers import (
+    AutoModelForMaskedLM,
+    AutoTokenizer,
+    BertConfig,
+    BertForMaskedLM,
+    Trainer,
+    TrainerCallback,
+    TrainingArguments,
+)
 from transformers.trainer_utils import get_last_checkpoint
 
 from ..config import resolve_path
@@ -18,6 +27,22 @@ from .collator import LexiconGuidedWWMCollator, select_mask_positions
 from .corpus import ChunkDataset, lexicon_lookup, load_word_vocab
 
 log = get_logger()
+
+
+class DeadlineCallback(TrainerCallback):
+    """Save a checkpoint and stop cleanly once a wall-clock deadline (epoch seconds) passes,
+    so a time-limited session (e.g. Kaggle) ends with a resumable checkpoint, not a kill."""
+
+    def __init__(self, deadline: float):
+        self.deadline = deadline
+        self.hit = False
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if time.time() >= self.deadline:
+            self.hit = True
+            control.should_save = True
+            control.should_training_stop = True
+        return control
 
 
 def lexicon_coverage(dataset: ChunkDataset, mlm_probability: float, n_samples: int = 20000, seed: int = 0) -> dict:
@@ -113,12 +138,23 @@ def run_dapt(cfg: dict) -> dict:
         report_to="none",
         seed=cfg.get("seed", 42),
     )
-    trainer = Trainer(model=model, args=args, train_dataset=train_ds, eval_dataset=eval_ds, data_collator=collator)
+    deadline = DeadlineCallback(float(cfg["deadline"])) if cfg.get("deadline") else None
+    trainer = Trainer(
+        model=model, args=args, train_dataset=train_ds, eval_dataset=eval_ds, data_collator=collator,
+        callbacks=[deadline] if deadline else None,
+    )
     last = get_last_checkpoint(str(out_dir)) if out_dir.exists() else None
     if last:
         log.info("Resuming from %s", last)
     train_result = trainer.train(resume_from_checkpoint=last)
     info["train_metrics"] = train_result.metrics
+
+    if deadline and deadline.hit:
+        info.update(completed=False, global_step=trainer.state.global_step)
+        save_json({"config": cfg, **info}, Path(out_dir) / "progress.json")
+        log.info("Deadline reached at step %d/%d; checkpoint saved, resume next session",
+                 trainer.state.global_step, total_steps)
+        return info
 
     if eval_ds is not None:
         metrics = trainer.evaluate()
@@ -128,6 +164,8 @@ def run_dapt(cfg: dict) -> dict:
     final = Path(out_dir) / "final"
     trainer.save_model(str(final))
     tokenizer.save_pretrained(str(final))
+    info["completed"] = True
     save_json({"config": cfg, **info}, final / "run_info.json")
+    (Path(out_dir) / "progress.json").unlink(missing_ok=True)
     log.info("Saved DAPT model to %s", final)
     return info

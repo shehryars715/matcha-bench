@@ -1,0 +1,34 @@
+# The full GPU pipeline, run in time-limited sessions by scripts/run_pipeline.py.
+# Every session restores outputs/ from the previous one, skips finished work, resumes the
+# unfinished DAPT run from its last checkpoint, and stops cleanly before the time budget ends.
+budget_hours: 9.0
+safety_margin_minutes: 30        # stop this long before the budget so outputs are saved
+
+stages:
+  - name: preflight              # tiny CPU/GPU check (~2 min), skipped once it has passed
+    type: preflight
+  - name: dapt-random
+    type: dapt
+    config: configs/dapt/random.yaml
+  - name: dapt-depression
+    type: dapt
+    config: configs/dapt/depression.yaml
+  - name: dapt-multidisorder
+    type: dapt
+    config: configs/dapt/multidisorder.yaml
+  - name: finetune
+    type: finetune
+    config: configs/finetune.yaml
+    # post-level ACL tasks first (cheap), then MATCHA tasks; within a task every model and seed
+    tasks: [suicide, cognitive, waimai, ewect_epidemic, ewect_usual,
+            matcha_ip_post, matcha_disorder_post, matcha_disorder_post_masked,
+            matcha_user_binary, matcha_user_binary_masked,
+            matcha_user_multiclass, matcha_user_multiclass_masked]
+    models: [bert-wwm-ext, matcha-random, matcha-depression, matcha-multidisorder, chinese-mentalbert, bert-base-chinese]
+    # minutes to reserve before starting one (task, model, seed) run; unlisted tasks use default
+    minutes_per_run: {default: 20, ewect_usual: 40, matcha_ip_post: 30, matcha_disorder_post: 30,
+                      matcha_disorder_post_masked: 30, matcha_user_multiclass: 45, matcha_user_multiclass_masked: 45}
+  - name: tfidf
+    type: tfidf
+  - name: summary
+    type: summary

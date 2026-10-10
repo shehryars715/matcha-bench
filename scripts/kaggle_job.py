@@ -35,8 +35,9 @@ DATASET_SLUG = "matcha-bench-data"
 PREFIX = "matcha-bench-"
 
 JOB_TEMPLATE = r'''
-import glob, os, shutil, subprocess, sys, zipfile
+import glob, os, shutil, subprocess, sys, time, zipfile
 
+os.environ["JOB_START"] = str(time.time())  # time budgets count from here, including setup
 CONFIG = {config}
 REPO = "/kaggle/working/matcha-bench"
 
@@ -109,10 +110,11 @@ def upload_data(args) -> None:
             kaggle("datasets", "create", "-p", str(tmp))  # private by default
 
 
-def push(args) -> None:
+def push_kernel(slug: str, commands: list[str], kernel_sources: list[str], gpu: str = "NvidiaTeslaT4",
+                timeout_hours: float | None = None) -> str:
+    """Push and start a headless Kaggle job; returns its URL."""
     user = username()
-    slug = PREFIX + args.name
-    config = {"git_url": GIT_URL, "commands": args.cmd}
+    config = {"git_url": GIT_URL, "commands": commands}
     meta = {
         "id": f"{user}/{slug}",
         "title": slug,
@@ -120,19 +122,27 @@ def push(args) -> None:
         "language": "python",
         "kernel_type": "script",
         "is_private": "true",
-        "enable_gpu": "true" if args.gpu else "false",
         "enable_internet": "true",
         "dataset_sources": [f"{user}/{DATASET_SLUG}"],
-        "kernel_sources": [f"{user}/{PREFIX}{name}" for name in args.inputs_from],
+        "kernel_sources": [f"{user}/{s}" for s in kernel_sources],
     }
-    if args.gpu:
-        meta["machine_shape"] = args.gpu
+    meta["enable_gpu"] = "true" if gpu else "false"
+    if gpu:
+        meta["machine_shape"] = gpu
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         (tmp / "kernel-metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
         (tmp / "job.py").write_text(JOB_TEMPLATE.format(config=json.dumps(config)), encoding="utf-8")
-        kaggle("kernels", "push", "-p", str(tmp))
-    print(f"https://www.kaggle.com/code/{user}/{slug}")
+        extra = ["-t", str(int(timeout_hours * 3600))] if timeout_hours else []
+        result = kaggle("kernels", "push", "-p", str(tmp), *extra)
+        if result.returncode != 0:
+            raise SystemExit("kaggle kernels push failed")
+    return f"https://www.kaggle.com/code/{user}/{slug}"
+
+
+def push(args) -> None:
+    url = push_kernel(PREFIX + args.name, args.cmd, [PREFIX + n for n in args.inputs_from], args.gpu, args.timeout_hours)
+    print(url)
 
 
 def status(args) -> None:
@@ -160,6 +170,7 @@ def main():
     p.add_argument("--cmd", action="append", required=True)
     p.add_argument("--inputs-from", nargs="*", default=[])
     p.add_argument("--gpu", default="NvidiaTeslaT4", help="Kaggle machine_shape; '' for CPU")
+    p.add_argument("--timeout-hours", type=float, help="hard cap on the job's run time")
 
     for action in ("status", "output"):
         s = sub.add_parser(action)

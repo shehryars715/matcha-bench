@@ -47,7 +47,24 @@ The notebook clones the GitHub repo. A public repo needs no setup. For a private
 The notebook clones the repo with the token, then removes the token from the clone's git config,
 because `/kaggle/working` is saved as notebook output.
 
-## 3. Run
+## 3. Run the whole pipeline in resumable sessions (recommended)
+
+```bash
+python scripts/kaggle_pipeline.py start      # start the next session (hard cap: budget_hours, default 9 h)
+python scripts/kaggle_pipeline.py status     # queued / running / complete
+python scripts/kaggle_pipeline.py log        # what the last session did
+python scripts/kaggle_pipeline.py results    # download result tables and metrics
+```
+
+Each `start` creates a new Kaggle job (`matcha-bench-run-001`, `-002`, ...), attaches the previous
+session's output and runs `scripts/run_pipeline.py`. That script works through
+`configs/pipeline.yaml`: preflight check → DAPT random → DAPT depression → DAPT multi-disorder →
+fine-tuning (every task × model × seed) → TF-IDF → summary tables. It skips anything already
+finished and resumes the current DAPT run from its last checkpoint. It also stops 30 minutes
+before the cap, saving a checkpoint, so the session ends cleanly and its outputs are kept. Just run
+`start` again once a session has finished, until the log says `pipeline complete`.
+
+## 3b. Run single steps
 
 **From the command line (recommended).** `scripts/kaggle_job.py` pushes each step as a headless GPU
 job (T4 ×2, Internet on) and downloads its outputs:

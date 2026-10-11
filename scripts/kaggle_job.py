@@ -21,6 +21,7 @@ commands, and leaves everything under /kaggle/working/matcha-bench/outputs as th
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -85,7 +86,9 @@ sh("du -sh outputs/* || true", cwd=REPO)
 
 
 def kaggle(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, "-m", "kaggle", *args], text=True)
+    # UTF-8 mode: the CLI writes kernel logs with the default encoding, which fails on Windows (cp1252)
+    return subprocess.run([sys.executable, "-m", "kaggle", *args], text=True,
+                          env={**os.environ, "PYTHONUTF8": "1"})
 
 
 def username() -> str:

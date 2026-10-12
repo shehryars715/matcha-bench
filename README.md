@@ -43,8 +43,8 @@ corpus is private and covers depression only. Here the same recipe is run on MAT
 ```mermaid
 flowchart LR
     A[MATCHA raw CSVs] --> B[prepare_matcha<br/>clean · dedup · user splits]
-    B --> C[build_tasks<br/>7 MATCHA tasks: baselines]
-    D[Chinese MentalBERT public datasets] --> C2[build_tasks<br/>5 Chinese MentalBERT tasks: sanity check]
+    B --> C[build_tasks<br/>MATCHA tasks: baselines]
+    D[Chinese MentalBERT public datasets] --> C2[build_tasks<br/>Chinese MentalBERT tasks: sanity check]
     G[Depression lexicon<br/>Li et al. 2020] --> H
     B --> E[mine_lexicon + LLM word filter<br/>words only, never posts]
     E --> H[build_dapt_corpus<br/>train users only]
@@ -79,14 +79,18 @@ hyper-parameters, so they differ only in which words get masked.
 | `matcha-random`, `matcha-depression` | ✓ | ✓ |
 | `matcha-multidisorder` | ✓ | not yet |
 
-**MATCHA tasks (the baselines).** Defined in this repository, since MATCHA has none.
+**MATCHA tasks (the baselines).** Defined in this repository, since MATCHA has none. The pipeline
+runs the four **core** tasks. The other three are built too, but paused to save GPU time; add them
+back in [`configs/pipeline.yaml`](configs/pipeline.yaml).
 
-| Task | Level | Labels | Metric | Question |
-|---|---|---|---|---|
-| `matcha_ip_post` | post | 2 | binary F1 | is the post an explicit self-report of diagnosis or treatment? |
-| `matcha_disorder_post` (+`_masked`) | post | 7 | macro-F1 | which disorder community does the post come from? |
-| `matcha_user_binary` (+`_masked`) | user | 2 | macro-F1 | disorder vs control, from **homepage posts only** |
-| `matcha_user_multiclass` (+`_masked`) | user | 8 | macro-F1 | 7 disorders + control, from **homepage posts only** |
+| Task | Level | Labels | Metric | Question | Run |
+|---|---|---|---|---|:---:|
+| `matcha_disorder_post` | post | 7 | macro-F1 | which disorder community does the post come from? | core |
+| `matcha_disorder_post_masked` | post | 7 | macro-F1 | the same, with disorder and drug names hidden | core |
+| `matcha_user_binary_masked` | user | 2 | macro-F1 | disorder vs control, from **homepage posts only**, names hidden | core |
+| `matcha_user_multiclass_masked` | user | 8 | macro-F1 | 7 disorders + control, from **homepage posts only**, names hidden | core |
+| `matcha_user_binary` / `matcha_user_multiclass` | user | 2 / 8 | macro-F1 | the user-level tasks without masking | paused |
+| `matcha_ip_post` | post | 2 | binary F1 | is the post an explicit self-report of diagnosis or treatment? | paused |
 
 **Chinese MentalBERT tasks (sanity check).** These are the paper's own evaluation tasks. Scores
 close to the published ones show that the reproduction works.
@@ -95,8 +99,9 @@ close to the published ones show that the reproduction works.
 |---|---|---|---|---|
 | `suicide` | post | 2 | binary F1 | SOS-HL-1K |
 | `cognitive` | post | 12 (multi-label) | micro-F1 | SocialCD-3K |
-| `ewect_usual` / `ewect_epidemic` | post | 6 emotions | macro-F1 | SMP2020-EWECT |
+| `ewect_epidemic` | post | 6 emotions | macro-F1 | SMP2020-EWECT |
 | `waimai` | post | 2 | binary F1 | food-delivery reviews (non-mental-health control) |
+| `ewect_usual` | post | 6 emotions | macro-F1 | SMP2020-EWECT; stopped after 7 of 18 runs to save GPU time |
 | `c2d2` | post | 8 | macro-F1 | optional; data shared on request |
 
 Every number is reported as mean ± std over 3 seeds, with paired-bootstrap significance tests.
@@ -107,7 +112,8 @@ Every number is reported as mean ± std over 3 seeds, with paired-bootstrap sign
 - 766 "control" users who also post in disorder communities are removed from the control group.
 - User-level tasks use homepage timelines only, because Super-Topic posts name the disorder.
 - `_masked` variants replace disorder names, community nicknames and 60+ psychiatric drug names
-  with placeholders (`某病`, `某药`). This shows how much of a score comes from spotting those words.
+  with placeholders (`某病`, `某药`). Comparing `matcha_disorder_post` with its masked twin shows how
+  much of a score comes from spotting those words.
 
 ## Quick start
 

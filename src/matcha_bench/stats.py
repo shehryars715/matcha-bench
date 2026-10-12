@@ -44,12 +44,15 @@ def collect_results(output_root: Path) -> pd.DataFrame:
 
 
 def summarise(results: pd.DataFrame, metric: str = "f1") -> pd.DataFrame:
-    """Task x model table of 'mean ± std (n)' in percentage points."""
+    """Task x model table of 'mean ± std' in percentage points, with '(n=k)' on cells that have
+    fewer seeds than the fullest cell (e.g. a task stopped part-way)."""
     if results.empty:
         return results
     g = results.groupby(["task", "model"])[metric].agg(["mean", "std", "count"]).reset_index()
     g["std"] = g["std"].fillna(0.0)
-    g["cell"] = [f"{100 * m:.2f} ± {100 * s:.2f}" for m, s in zip(g["mean"], g["std"])]
+    full = g["count"].max()
+    g["cell"] = [f"{100 * m:.2f} ± {100 * s:.2f}" + (f" (n={n})" if n < full else "")
+                 for m, s, n in zip(g["mean"], g["std"], g["count"])]
     return g.pivot(index="model", columns="task", values="cell")
 
 

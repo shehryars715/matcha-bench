@@ -72,7 +72,7 @@ session's output and runs `scripts/run_pipeline.py`. That script works through
 1. preflight check;
 2. DAPT random → DAPT depression → DAPT multi-disorder;
 3. fine-tuning on the Chinese MentalBERT tasks (sanity check, 6 models × 3 seeds);
-4. fine-tuning on the MATCHA tasks (the baselines, 5 models × 3 seeds);
+4. fine-tuning on the 4 core MATCHA tasks (the baselines, 5 models × 3 seeds);
 5. TF-IDF, then summary tables and the model comparisons.
 
 It skips anything already finished and resumes the current DAPT run from its last checkpoint. It
@@ -121,8 +121,8 @@ Each 9-hour session does about 8.5 hours of work. DAPT takes about 3.6 h per var
 | 1 | preflight, `random` DAPT, `depression` DAPT, `multidisorder` DAPT (to step 2,290 of 6,594) |
 | 2 | `multidisorder` DAPT finished; Suicide, Cognitive and Waimai fine-tuning |
 | 3 | Waimai finished, EWECT-epidemic, EWECT-usual (7 of 18 runs) |
-| 4–10 | rest of EWECT-usual, then the MATCHA tasks (≈ 55 GPU-h, estimated) |
+| 4–7 | the 4 core MATCHA tasks (≈ 31 GPU-h, estimated; EWECT-usual stays at 7 of 18 runs) |
 | end | TF-IDF and summary (CPU, inside the last session) |
 
-The full plan is about 80 GPU-h in total; see `docs/RESEARCH_PLAN.md` §5 for the breakdown and the
-options to cut it.
+The full plan is about 56 GPU-h in total; see `docs/RESEARCH_PLAN.md` §5 for the breakdown and the
+runs that were cut.

@@ -67,7 +67,7 @@ baselines are stage 1, and the paper's contribution will be a new method (stage 
 |---|---|
 | Compute | Kaggle with phone verification (free T4 ×2, 30 GPU-h/week). CPU-heavy steps run locally. |
 | Scope | Stage 1 = baselines on MATCHA. Stage 2 = a new method (the paper). |
-| Evaluation | 7 MATCHA tasks (the baselines; including masked variants) + the 5 public Chinese MentalBERT tasks (sanity check; C2D2 if obtained). |
+| Evaluation | **4 core MATCHA tasks** (the baselines): `disorder_post`, `disorder_post_masked`, `user_binary_masked`, `user_multiclass_masked`. `ip_post` and the unmasked user-level tasks are built but paused to save GPU time. Plus 4 public Chinese MentalBERT tasks as a sanity check (EWECT-usual stopped after 7 of 18 runs; C2D2 if obtained). |
 | Models on the MATCHA tasks | TF-IDF, bert-base-chinese, chinese-bert-wwm-ext, Chinese MentalBERT, `matcha-random`, `matcha-depression` (the Chinese MentalBERT paper's comparison). `matcha-multidisorder` can be added later. |
 | Models on the Chinese MentalBERT tasks | All of the above plus `matcha-multidisorder`. |
 | Fine-tuning protocol | lr 2e-5, batch 16 per GPU, ≤10 epochs, early stopping (patience 3), best dev, 3 seeds, paired bootstrap. On Kaggle's 2 GPUs the effective batch is 32, identically for every model; to be stated in the paper. |
@@ -110,16 +110,18 @@ Measured on Kaggle (sessions 1–3, October 2026), except where marked as an est
 | Stage | Runs | Per run | Total |
 |---|---|---|---|
 | DAPT (281k chunks × 3 epochs, 6,594 steps at ~1.95 s/step) | 3 | 3.6 h | **10.8 h** (done) |
-| Fine-tune: Chinese MentalBERT tasks, 6 models × 3 seeds | 90 | Suicide 1.9 min, Cognitive 5.7, Waimai 13.6, EWECT-epidemic 14.5, EWECT-usual 32 | ≈ 20 h (79 runs done) |
-| Fine-tune: MATCHA tasks, 5 models × 3 seeds | 105 | estimated: ip_post ~32 min, disorder_post ~38, user_binary ~12, user_multiclass ~35 (each task also has a masked twin) | ≈ 50 h (estimate) |
-| **Total** | | | **≈ 80 GPU-h ≈ 3 weeks of Kaggle quota** |
+| Fine-tune: Chinese MentalBERT tasks, 6 models × 3 seeds | 72 + 7 | Suicide 1.9 min, Cognitive 5.7, Waimai 13.6, EWECT-epidemic 14.5, EWECT-usual 32 | ≈ 14 h (done) |
+| Fine-tune: 4 core MATCHA tasks, 5 models × 3 seeds | 60 | estimated: disorder_post ~38 min (×2 with its masked twin), user_binary_masked ~12, user_multiclass_masked ~35 | ≈ 31 h (estimate) |
+| **Total** | | | **≈ 56 GPU-h ≈ 2 weeks of Kaggle quota** |
 
-Ways to cut it, from least to most costly to the results:
-- drop the leftover `matcha-multidisorder` / `bert-base-chinese` runs on the sanity-check tasks;
-- drop or postpone `matcha_ip_post`, which mostly reflects how MATCHA was collected;
-- keep only the masked versions of the user-level tasks;
-- fewer seeds or fewer models (not recommended: model gaps are small, so 3 seeds and the
-  random-masking control are needed to interpret them).
+Cuts already made (2026-10-13), from about 80 GPU-h:
+- EWECT-usual stopped after 7 of 18 runs: the sanity check had already passed on 4 tasks (≈ 6 h saved);
+- `matcha_ip_post` paused: it mostly reflects how MATCHA was collected (≈ 8 h);
+- unmasked user-level tasks paused: the masked versions are the stricter test, and the
+  raw-vs-masked comparison is kept at post level (≈ 12 h).
+
+Not recommended: fewer seeds or fewer models. Model gaps are small, so 3 seeds and the
+random-masking control are needed to interpret them.
 
 CPU-only steps can run on a laptop: data preparation, task building, mining, corpus packing and TF-IDF.
 
@@ -129,8 +131,8 @@ CPU-only steps can run on a laptop: data preparation, task building, mining, cor
 2. **Lexicon effect (the Chinese MentalBERT claim):** `matcha-depression` vs `matcha-random`. Does
    guided masking help on an open corpus, with seeds and significance tests?
 3. **Corpus comparison:** `matcha-depression` vs `chinese-mentalbert` (private depression corpus).
-4. **Shortcut reliance:** every model, raw vs `_masked`. The size of the drop shows how much is
-   keyword matching. Does DAPT reduce that reliance?
+4. **Shortcut reliance:** every model on `matcha_disorder_post` vs its `_masked` twin. The size of
+   the drop shows how much is keyword matching. Does DAPT reduce that reliance?
 5. **Multi-disorder lexicon (optional):** `matcha-multidisorder` vs `matcha-depression`, so far on
    the Chinese MentalBERT tasks only.
 6. **Where every baseline struggles** (per-disorder and per-task results). This tells stage 2 where
@@ -191,7 +193,7 @@ The paper's contribution is the stage-2 method. The baselines enter as setup and
 ## 8. To do
 
 - [ ] Finish the stage-1 fine-tuning on Kaggle (`python scripts/kaggle_pipeline.py start`).
-- [ ] Decide which runs to cut, if any (§5).
+- [x] Decide which runs to cut (§5): core 4 MATCHA tasks, EWECT-usual stopped.
 - [ ] Decide on the effective fine-tuning batch: keep 32 and state it, or re-run with 16.
 - [ ] Step 1b: settle the LLM-baseline setup (§3) and the GPU to run it on.
 - [ ] Confirm with the MATCHA authors whether the DUA allows (a) a private Kaggle dataset copy,

@@ -16,19 +16,24 @@ stages:
   - name: dapt-multidisorder
     type: dapt
     config: configs/dapt/multidisorder.yaml
-  - name: finetune
+  # Sanity check: the five evaluation tasks of the Chinese MentalBERT paper, every model and seed
+  - name: finetune-mentalbert
     type: finetune
     config: configs/finetune.yaml
-    # Core reproduction: the five evaluation tasks of the Chinese MentalBERT paper; within a task
-    # every model and seed. The MATCHA tasks are paused to save GPU quota; to resume them, append:
-    #   matcha_ip_post, matcha_disorder_post, matcha_disorder_post_masked,
-    #   matcha_user_binary, matcha_user_binary_masked,
-    #   matcha_user_multiclass, matcha_user_multiclass_masked
     tasks: [suicide, cognitive, waimai, ewect_epidemic, ewect_usual]
     models: [bert-wwm-ext, matcha-random, matcha-depression, matcha-multidisorder, chinese-mentalbert, bert-base-chinese]
     # minutes to reserve before starting one (task, model, seed) run; unlisted tasks use default
-    minutes_per_run: {default: 20, ewect_usual: 40, matcha_ip_post: 30, matcha_disorder_post: 30,
-                      matcha_disorder_post_masked: 30, matcha_user_multiclass: 45, matcha_user_multiclass_masked: 45}
+    minutes_per_run: {default: 20, ewect_usual: 40}
+  # MATCHA baselines: the Chinese MentalBERT paper's model set (matcha-multidisorder can be added later)
+  - name: finetune-matcha
+    type: finetune
+    config: configs/finetune.yaml
+    tasks: [matcha_ip_post, matcha_disorder_post, matcha_disorder_post_masked,
+            matcha_user_binary, matcha_user_binary_masked,
+            matcha_user_multiclass, matcha_user_multiclass_masked]
+    models: [bert-wwm-ext, matcha-random, matcha-depression, chinese-mentalbert, bert-base-chinese]
+    minutes_per_run: {default: 20, matcha_ip_post: 35, matcha_disorder_post: 40,
+                      matcha_disorder_post_masked: 40, matcha_user_multiclass: 60, matcha_user_multiclass_masked: 60}
   - name: tfidf
     type: tfidf
   - name: summary

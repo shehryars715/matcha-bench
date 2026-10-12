@@ -73,7 +73,7 @@ hyper-parameters, so they differ only in which words get masked.
 | Model | Chinese MentalBERT tasks | MATCHA tasks |
 |---|:---:|:---:|
 | `tfidf-lr` (char 1–3-gram, CPU) | ✓ | ✓ |
-| `bert-base-chinese` | ✓ | ✓ |
+| `bert-base-chinese` | ✓ | not run (trails `bert-wwm-ext` on every sanity-check task; dropped to save GPU time) |
 | `hfl/chinese-bert-wwm-ext` (the starting point of every DAPT variant) | ✓ | ✓ |
 | `zwzzz/Chinese-MentalBERT` (the released model) | ✓ | ✓ |
 | `matcha-random`, `matcha-depression` | ✓ | ✓ |
@@ -168,7 +168,7 @@ The implementation was checked against the
 | Segmentation | LTP | jieba primed with all lexicons, so every variant has identical word boundaries |
 | Corpus | 3.36M private posts (depression) | MATCHA training users (7 disorders + control) |
 | Downstream test users in pre-training | not controlled | excluded by construction |
-| Fine-tuning | lr 2e-5, batch 16, 10 epochs, best dev | same, plus early stopping (patience 3), 3 seeds and significance tests. On Kaggle's 2 GPUs the effective batch is 32 (16 per GPU). |
+| Fine-tuning | lr 2e-5, batch 16, 10 epochs, best dev | same, plus early stopping (patience 3), 3 seeds and significance tests. MATCHA tasks: one run per GPU, batch 16. The sanity-check tasks ran across both Kaggle GPUs, an effective batch of 32. Each run records its `effective_batch_size` in `metrics.json`. |
 | Cognitive / Suicide | 5-fold CV | fixed splits matching the paper's sizes (2,180/545/682 and 799/200/250) |
 
 ## Repository layout

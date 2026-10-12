@@ -10,7 +10,9 @@ Stages (configs/pipeline.yaml) run in order:
   checkpoint) until done or the deadline, then the pipeline stops for this session;
 * finetune (one stage per task group, each with its own tasks and models): one subprocess per
   (task, model, seed); finished runs are skipped, and a run is only started if its reserved
-  minutes fit before the deadline;
+  minutes fit before the deadline. With `finetune_one_run_per_gpu: true` and several GPUs, each
+  GPU runs its own (task, model, seed) at the same time (output in outputs/logs/finetune/);
+  otherwise runs go one at a time across all GPUs;
 * tfidf, summary: quick CPU steps once everything else is done. The summary writes the results
   tables and one paired-bootstrap comparison per model pair listed under `compare`.
 The session log of what happened is appended to outputs/pipeline_log.jsonl.
@@ -29,6 +31,8 @@ from matcha_bench.config import REPO_ROOT, load_config, resolve_path
 
 PY = sys.executable
 EXTRA = {"dapt": [], "finetune": []}  # extra --set overrides passed to the step scripts
+ONE_RUN_PER_GPU = False               # set from configs/pipeline.yaml in main()
+POLL_SECONDS = 10                     # how often parallel fine-tuning runs are checked
 
 
 def log_event(**event) -> None:
@@ -81,11 +85,47 @@ def stage_dapt(stage, deadline) -> bool:
     return done
 
 
+def gpu_slots() -> list[str | None]:
+    """CUDA_VISIBLE_DEVICES value for each concurrent fine-tuning run.
+
+    With `finetune_one_run_per_gpu` and more than one GPU, every GPU runs its own (task, model,
+    seed) with a true per-GPU batch, instead of one run split across GPUs by DataParallel (which
+    leaves small batches waiting on GPU synchronisation). Otherwise there is one slot and the run
+    sees every GPU, as before.
+    """
+    if not ONE_RUN_PER_GPU:
+        return [None]
+    try:
+        import torch
+        n = torch.cuda.device_count()
+    except Exception:
+        n = 0
+    return [str(i) for i in range(n)] if n > 1 else [None]
+
+
+def start_finetune(task: str, model: str, seed: int, device: str | None):
+    """Launch one fine-tuning run. In parallel mode its output goes to outputs/logs/finetune/."""
+    cmd = [PY, "scripts/run_finetune.py", "--tasks", task, "--models", model, "--seeds", str(seed)]
+    cmd += ["--set", *EXTRA["finetune"]] if EXTRA["finetune"] else []
+    env, log_file = dict(os.environ), None
+    if device is not None:
+        env["CUDA_VISIBLE_DEVICES"] = device
+        log_dir = REPO_ROOT / "outputs" / "logs" / "finetune"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        safe_model = model.replace("/", "_").replace("\\", "_")  # tags may also be local paths
+        log_file = open(log_dir / f"{task}__{safe_model}__seed{seed}.log", "w", encoding="utf-8")
+    print("\n$ " + " ".join(cmd) + (f"   [GPU {device}]" if device is not None else ""), flush=True)
+    proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env, stdout=log_file,
+                            stderr=subprocess.STDOUT if log_file else None)
+    return proc, log_file
+
+
 def stage_finetune(stage, deadline) -> bool:
     ft = load_config(resolve_path(stage["config"]))
     out_root = resolve_path(ft["output_root"])
     reserve = stage.get("minutes_per_run", {})
     completed_all = True
+    queue = []
     for task in stage["tasks"]:
         if not (resolve_path(ft["task_root"]) / task / "meta.json").exists():
             continue
@@ -95,17 +135,36 @@ def stage_finetune(stage, deadline) -> bool:
                 completed_all = False  # its DAPT model is not trained yet
                 continue
             for seed in ft["seeds"]:
-                if (out_root / task / model / f"seed{seed}" / "metrics.json").exists():
-                    continue
-                need = reserve.get(task, reserve.get("default", 20))
-                if minutes_left(deadline) < need:
-                    log_event(stage=stage["name"], status="paused (time)", next=f"{task}/{model}/seed{seed}")
-                    return False
-                cmd = [PY, "scripts/run_finetune.py", "--tasks", task, "--models", model, "--seeds", str(seed)]
-                code = run(cmd + (["--set", *EXTRA["finetune"]] if EXTRA["finetune"] else []))
-                log_event(stage=stage["name"], run=f"{task}/{model}/seed{seed}", returncode=code)
-                if code != 0:
-                    completed_all = False
+                if not (out_root / task / model / f"seed{seed}" / "metrics.json").exists():
+                    queue.append((task, model, seed))
+
+    slots = gpu_slots()
+    running: dict[int, tuple] = {}  # slot index -> (job, process, log file)
+    paused = False
+    while running or (queue and not paused):
+        for i, device in enumerate(slots):
+            if i in running or not queue or paused:
+                continue
+            task, model, seed = queue[0]
+            if minutes_left(deadline) < reserve.get(task, reserve.get("default", 20)):
+                log_event(stage=stage["name"], status="paused (time)", next=f"{task}/{model}/seed{seed}")
+                paused = True
+                break
+            running[i] = (queue.pop(0), *start_finetune(task, model, seed, device))
+        time.sleep(POLL_SECONDS if running else 0)
+        for i in [i for i, (_, proc, _) in running.items() if proc.poll() is not None]:
+            (task, model, seed), proc, log_file = running.pop(i)
+            if log_file:
+                log_file.close()
+                if proc.returncode != 0:  # show why it failed in the session log
+                    with open(log_file.name, encoding="utf-8", errors="replace") as f:
+                        print("".join(f.readlines()[-30:]), flush=True)
+            event = {"run": f"{task}/{model}/seed{seed}", "returncode": proc.returncode}
+            log_event(stage=stage["name"], **event, **({"gpu": slots[i]} if slots[i] is not None else {}))
+            if proc.returncode != 0:
+                completed_all = False
+    if paused:
+        return False
     log_event(stage=stage["name"], status="done" if completed_all else "done (some runs failed or waiting)")
     return completed_all
 
@@ -141,6 +200,8 @@ def main():
     args = ap.parse_args()
     cfg = load_config(resolve_path(args.config))
     EXTRA["dapt"], EXTRA["finetune"] = args.dapt_set, args.finetune_set
+    global ONE_RUN_PER_GPU
+    ONE_RUN_PER_GPU = bool(cfg.get("finetune_one_run_per_gpu", False))
 
     if args.no_limit:
         deadline = time.time() + 10 * 365 * 24 * 3600

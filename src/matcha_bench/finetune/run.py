@@ -163,6 +163,8 @@ def run_finetune(
         "task": task, "model_tag": model_tag, "model_path": str(model_path), "seed": seed,
         "problem_type": problem_type, "average": meta["average"], "label_names": label_names,
         "hyperparameters": {**hp, "max_length": max_length}, "train_runtime": train_out.metrics.get("train_runtime"),
+        "n_gpu": n_gpu, "effective_batch_size": hp["batch_size"] * n_gpu * hp.get("grad_accum", 1),
+        "epochs_trained": trainer.state.epoch,
         "dev": results["dev"], "test": results["test"],
     }
     save_json(record, out_dir / "metrics.json")

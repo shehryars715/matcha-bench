@@ -7,8 +7,11 @@ runs best locally.
 
 Kaggle → *Settings* → *Phone verification*. GPUs (T4 ×2 or P100) become available with about
 30 h/week and 12 h per session. Choose **T4 ×2**: fp16 is fast on T4, and the trainer uses both
-GPUs automatically (DataParallel). For fine-tuning this means a per-GPU batch of 16 gives an
-effective batch of 32.
+GPUs. DAPT splits each batch across both GPUs (DataParallel). Fine-tuning runs one
+(task, model, seed) per GPU at the same time (`finetune_one_run_per_gpu` in
+`configs/pipeline.yaml`), each with a true batch of 16; per-run output goes to
+`outputs/logs/finetune/`. With that switch off, one run uses both GPUs and its effective batch is
+32. The sanity-check tasks were run that way.
 
 To check the weekly quota, run `python -m kaggle quota`. In Kaggle CLI 2.2.3 it can crash with
 `not enough values to unpack`; the usage is also shown on the Kaggle website under *Settings*.
@@ -72,7 +75,7 @@ session's output and runs `scripts/run_pipeline.py`. That script works through
 1. preflight check;
 2. DAPT random → DAPT depression → DAPT multi-disorder;
 3. fine-tuning on the Chinese MentalBERT tasks (sanity check, 6 models × 3 seeds);
-4. fine-tuning on the 4 core MATCHA tasks (the baselines, 5 models × 3 seeds);
+4. fine-tuning on the 4 core MATCHA tasks (the baselines, 4 models × 3 seeds, one run per GPU);
 5. TF-IDF, then summary tables and the model comparisons.
 
 It skips anything already finished and resumes the current DAPT run from its last checkpoint. It
@@ -121,8 +124,8 @@ Each 9-hour session does about 8.5 hours of work. DAPT takes about 3.6 h per var
 | 1 | preflight, `random` DAPT, `depression` DAPT, `multidisorder` DAPT (to step 2,290 of 6,594) |
 | 2 | `multidisorder` DAPT finished; Suicide, Cognitive and Waimai fine-tuning |
 | 3 | Waimai finished, EWECT-epidemic, EWECT-usual (7 of 18 runs) |
-| 4–7 | the 4 core MATCHA tasks (≈ 31 GPU-h, estimated; EWECT-usual stays at 7 of 18 runs) |
+| 4–5 | the 4 core MATCHA tasks, two runs at a time (≈ 16 h, estimated; EWECT-usual stays at 7 of 18 runs) |
 | end | TF-IDF and summary (CPU, inside the last session) |
 
-The full plan is about 56 GPU-h in total; see `docs/RESEARCH_PLAN.md` §5 for the breakdown and the
-runs that were cut.
+The full plan is about 41 hours of session time; see `docs/RESEARCH_PLAN.md` §5 for the breakdown and
+the runs that were cut.

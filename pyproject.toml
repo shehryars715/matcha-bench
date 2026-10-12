@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "matcha-bench"
 version = "0.1.0"
-description = "Leakage-aware benchmark of lexicon-guided domain-adaptive pre-training for multi-disorder mental health detection on Chinese social media (MATCHA)."
+description = "Baselines for multi-disorder mental health detection on Chinese social media (MATCHA): Chinese MentalBERT's lexicon-guided domain-adaptive pre-training reproduced on MATCHA, with leakage-aware tasks."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

@@ -8,9 +8,11 @@
 Stages (configs/pipeline.yaml) run in order:
 * dapt: skipped if outputs/dapt/<variant>/final exists; otherwise trains (resuming from the last
   checkpoint) until done or the deadline, then the pipeline stops for this session;
-* finetune: one subprocess per (task, model, seed); finished runs are skipped, and a run is only
-  started if its reserved minutes fit before the deadline;
-* tfidf, summary: quick CPU steps once everything else is done.
+* finetune (one stage per task group, each with its own tasks and models): one subprocess per
+  (task, model, seed); finished runs are skipped, and a run is only started if its reserved
+  minutes fit before the deadline;
+* tfidf, summary: quick CPU steps once everything else is done. The summary writes the results
+  tables and one paired-bootstrap comparison per model pair listed under `compare`.
 The session log of what happened is appended to outputs/pipeline_log.jsonl.
 """
 
@@ -97,14 +99,14 @@ def stage_finetune(stage, deadline) -> bool:
                     continue
                 need = reserve.get(task, reserve.get("default", 20))
                 if minutes_left(deadline) < need:
-                    log_event(stage="finetune", status="paused (time)", next=f"{task}/{model}/seed{seed}")
+                    log_event(stage=stage["name"], status="paused (time)", next=f"{task}/{model}/seed{seed}")
                     return False
                 cmd = [PY, "scripts/run_finetune.py", "--tasks", task, "--models", model, "--seeds", str(seed)]
                 code = run(cmd + (["--set", *EXTRA["finetune"]] if EXTRA["finetune"] else []))
-                log_event(stage="finetune", run=f"{task}/{model}/seed{seed}", returncode=code)
+                log_event(stage=stage["name"], run=f"{task}/{model}/seed{seed}", returncode=code)
                 if code != 0:
                     completed_all = False
-    log_event(stage="finetune", status="done" if completed_all else "done (some runs failed or waiting)")
+    log_event(stage=stage["name"], status="done" if completed_all else "done (some runs failed or waiting)")
     return completed_all
 
 
@@ -114,8 +116,8 @@ def stage_tfidf(stage, deadline) -> bool:
 
 def stage_summary(stage, deadline) -> bool:
     run([PY, "scripts/summarize_results.py"])
-    run([PY, "scripts/summarize_results.py", "--compare", "matcha-multidisorder", "matcha-random"])
-    run([PY, "scripts/summarize_results.py", "--compare", "matcha-depression", "matcha-random"])
+    for model_a, model_b in stage.get("compare", []):
+        run([PY, "scripts/summarize_results.py", "--compare", model_a, model_b])
     return True
 
 

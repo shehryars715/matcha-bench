@@ -1,6 +1,8 @@
-# The full GPU pipeline, run in time-limited sessions by scripts/run_pipeline.py.
+# The baseline pipeline, run in time-limited sessions by scripts/run_pipeline.py.
 # Every session restores outputs/ from the previous one, skips finished work, resumes the
 # unfinished DAPT run from its last checkpoint, and stops cleanly before the time budget ends.
+# Stage 1 of the project: these runs produce the baseline scores on MATCHA that later methods
+# are compared against.
 budget_hours: 9.0
 safety_margin_minutes: 30        # stop this long before the budget so outputs are saved
 
@@ -38,3 +40,9 @@ stages:
     type: tfidf
   - name: summary
     type: summary
+    # paired-bootstrap tests, one-sided "A beats B", on every task both models ran
+    compare:
+      - [matcha-random, bert-wwm-ext]             # corpus effect: does pre-training on MATCHA help?
+      - [matcha-depression, matcha-random]        # lexicon effect: the Chinese MentalBERT claim
+      - [matcha-depression, chinese-mentalbert]   # MATCHA corpus vs the published model's corpus
+      - [matcha-multidisorder, matcha-random]     # multi-disorder lexicon (Chinese MentalBERT tasks only for now)

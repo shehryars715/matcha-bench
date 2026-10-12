@@ -1,5 +1,7 @@
 # Fine-tuning protocol. Defaults follow Chinese MentalBERT (lr 2e-5, batch 16, <=10 epochs,
 # best-dev checkpoint evaluated on test). Every run is repeated over `seeds`.
+# batch_size is per GPU: with 2 GPUs (Kaggle T4 x2, DataParallel) the effective batch is 32.
+# To match the Kaggle runs on one GPU, set defaults.grad_accum=2.
 task_root: data/tasks
 output_root: outputs/finetune
 seeds: [42, 43, 44]

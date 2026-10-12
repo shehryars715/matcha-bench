@@ -7,7 +7,11 @@ runs best locally.
 
 Kaggle → *Settings* → *Phone verification*. GPUs (T4 ×2 or P100) become available with about
 30 h/week and 12 h per session. Choose **T4 ×2**: fp16 is fast on T4, and the trainer uses both
-GPUs automatically.
+GPUs automatically (DataParallel). For fine-tuning this means a per-GPU batch of 16 gives an
+effective batch of 32.
+
+To check the weekly quota, run `python -m kaggle quota`. In Kaggle CLI 2.2.3 it can crash with
+`not enough values to unpack`; the usage is also shown on the Kaggle website under *Settings*.
 
 ## 1. Prepare data locally (CPU, ~20 min)
 
@@ -64,11 +68,21 @@ python scripts/kaggle_pipeline.py results    # download result tables and metric
 
 Each `start` creates a new Kaggle job (`matcha-bench-run-001`, `-002`, ...), attaches the previous
 session's output and runs `scripts/run_pipeline.py`. That script works through
-`configs/pipeline.yaml`: preflight check → DAPT random → DAPT depression → DAPT multi-disorder →
-fine-tuning (every task × model × seed) → TF-IDF → summary tables. It skips anything already
-finished and resumes the current DAPT run from its last checkpoint. It also stops 30 minutes
-before the cap, saving a checkpoint, so the session ends cleanly and its outputs are kept. Just run
-`start` again once a session has finished, until the log says `pipeline complete`.
+`configs/pipeline.yaml`:
+1. preflight check;
+2. DAPT random → DAPT depression → DAPT multi-disorder;
+3. fine-tuning on the Chinese MentalBERT tasks (sanity check, 6 models × 3 seeds);
+4. fine-tuning on the MATCHA tasks (the baselines, 5 models × 3 seeds);
+5. TF-IDF, then summary tables and the model comparisons.
+
+It skips anything already finished and resumes the current DAPT run from its last checkpoint. It
+also stops 30 minutes before the cap, saving a checkpoint, so the session ends cleanly and its
+outputs are kept. Just run `start` again once a session has finished, until the log says
+`pipeline complete`.
+
+Kaggle clones the code from GitHub at the start of each session, so changes to the pipeline or
+configs must be pushed first. Don't start a session that doesn't fit in the remaining weekly
+quota: running out of quota stops the session abruptly, without the clean checkpoint stop.
 
 ## 3b. Run single steps
 
@@ -98,12 +112,17 @@ for up to 12 h, and `/kaggle/working` (≤ 20 GB) is kept as output.
 - **Fine-tuning** skips any `(task, model, seed)` that already has a `metrics.json`. Copy the
   previous `outputs/finetune` back the same way and re-run.
 
-## 5. Suggested session plan
+## 5. Session plan (measured)
+
+Each 9-hour session does about 8.5 hours of work. DAPT takes about 3.6 h per variant.
 
 | Session | Work |
 |---|---|
-| 1 | smoke test, then `random` DAPT |
-| 2 | `depression` DAPT, then `multidisorder` DAPT |
-| 3 | Chinese MentalBERT tasks × all models × 3 seeds |
-| 4–5 | MATCHA tasks × all models × 3 seeds |
-| local | `run_tfidf.py`, `summarize_results.py` |
+| 1 | preflight, `random` DAPT, `depression` DAPT, `multidisorder` DAPT (to step 2,290 of 6,594) |
+| 2 | `multidisorder` DAPT finished; Suicide, Cognitive and Waimai fine-tuning |
+| 3 | Waimai finished, EWECT-epidemic, EWECT-usual (7 of 18 runs) |
+| 4–10 | rest of EWECT-usual, then the MATCHA tasks (≈ 55 GPU-h, estimated) |
+| end | TF-IDF and summary (CPU, inside the last session) |
+
+The full plan is about 80 GPU-h in total; see `docs/RESEARCH_PLAN.md` §5 for the breakdown and the
+options to cut it.

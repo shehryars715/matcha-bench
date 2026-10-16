@@ -92,9 +92,14 @@ def kaggle(*args: str) -> subprocess.CompletedProcess:
 
 
 def username() -> str:
+    if os.environ.get("KAGGLE_API_TOKEN"):  # an access token (or a file holding one) picks another account
+        from kaggle.api.kaggle_api_extended import KaggleApi
+        api = KaggleApi()
+        api.authenticate()
+        return api.config_values["username"]
     cfg = Path.home() / ".kaggle" / "kaggle.json"
     if not cfg.exists():
-        raise SystemExit("Missing ~/.kaggle/kaggle.json (Kaggle → Settings → API → Create New Token)")
+        raise SystemExit(f"Missing {cfg} (Kaggle → Settings → API → Create New Token)")
     return json.loads(cfg.read_text(encoding="utf-8"))["username"]
 
 
@@ -114,8 +119,12 @@ def upload_data(args) -> None:
 
 
 def push_kernel(slug: str, commands: list[str], kernel_sources: list[str], gpu: str = "NvidiaTeslaT4",
-                timeout_hours: float | None = None) -> str:
-    """Push and start a headless Kaggle job; returns its URL."""
+                timeout_hours: float | None = None, data_owner: str | None = None) -> str:
+    """Push and start a headless Kaggle job; returns its URL.
+
+    kernel_sources may be bare slugs (this account) or "owner/slug" (shared from another account);
+    data_owner is the account that holds the dataset (default: this one).
+    """
     user = username()
     config = {"git_url": GIT_URL, "commands": commands}
     meta = {
@@ -126,8 +135,8 @@ def push_kernel(slug: str, commands: list[str], kernel_sources: list[str], gpu: 
         "kernel_type": "script",
         "is_private": "true",
         "enable_internet": "true",
-        "dataset_sources": [f"{user}/{DATASET_SLUG}"],
-        "kernel_sources": [f"{user}/{s}" for s in kernel_sources],
+        "dataset_sources": [f"{data_owner or user}/{DATASET_SLUG}"],
+        "kernel_sources": [s if "/" in s else f"{user}/{s}" for s in kernel_sources],
     }
     meta["enable_gpu"] = "true" if gpu else "false"
     if gpu:

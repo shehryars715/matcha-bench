@@ -2,6 +2,7 @@
 
     python scripts/kaggle_pipeline.py start      # start the next session (resumes the last one)
     python scripts/kaggle_pipeline.py start --budget-hours 5.5   # shorter session (little GPU quota left)
+    python scripts/kaggle_pipeline.py start --pipeline configs/pipeline_llm.yaml   # the LLM baseline
     python scripts/kaggle_pipeline.py status     # is the current session queued / running / done?
     python scripts/kaggle_pipeline.py log        # what each session did (pipeline_log.jsonl)
     python scripts/kaggle_pipeline.py results    # download result tables and metrics
@@ -57,7 +58,7 @@ def kernel_status(kernel: str) -> str:
 
 
 def start(args) -> None:
-    cfg = load_config(resolve_path(args.config))
+    cfg = load_config(resolve_path(args.pipeline))
     state = load_state()
     sources = []
     if state["runs"]:
@@ -76,12 +77,13 @@ def start(args) -> None:
     n = len(state["runs"]) + 1
     slug = f"{RUN_PREFIX}{n:03d}"
     budget = args.budget_hours or cfg["budget_hours"]
-    url = push_kernel(slug, [f"python scripts/run_pipeline.py --budget-hours {budget}"], sources,
-                      timeout_hours=budget, data_owner=state.get("data_owner"))
-    state["runs"].append({"slug": slug, "owner": username(), "resumes": sources[0] if sources else None,
+    command = f"python scripts/run_pipeline.py --config {args.pipeline} --budget-hours {budget}"
+    url = push_kernel(slug, [command], sources, timeout_hours=budget, data_owner=state.get("data_owner"))
+    state["runs"].append({"slug": slug, "owner": username(), "pipeline": args.pipeline,
+                          "resumes": sources[0] if sources else None,
                           "pushed": time.strftime("%Y-%m-%d %H:%M:%S"), "url": url})
     save_state(state)
-    print(f"Started session {n} ({slug}), hard cap {budget} h"
+    print(f"Started session {n} ({slug}, {args.pipeline}), hard cap {budget} h"
           + (f", resuming from {sources[0]}" if sources else ", fresh start"))
     print(url)
 
@@ -117,7 +119,7 @@ def log(args) -> None:
 
 
 def results(args) -> None:
-    dest = download(current_run(), r"(outputs/results/|metrics\.json$|run_info\.json$|pipeline_log\.jsonl$)")
+    dest = download(current_run(), r"(outputs/results/|outputs/llm/.*\.jsonl?$|metrics\.json$|run_info\.json$|pipeline_log\.jsonl$)")
     print(f"Downloaded result files to {dest}")
     summary = list(dest.rglob("summary_f1.csv"))
     if summary:
@@ -142,7 +144,8 @@ def account(args) -> None:
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("action", choices=["start", "status", "log", "results", "account"])
-    ap.add_argument("--config", default="configs/pipeline.yaml")
+    ap.add_argument("--pipeline", "--config", dest="pipeline", default="configs/pipeline.yaml",
+                    help="start: pipeline config the session runs (configs/pipeline_llm.yaml for the LLM baseline)")
     ap.add_argument("--budget-hours", type=float, help="start: session cap instead of the config's budget_hours")
     ap.add_argument("--token-file", help="account: file holding that account's Kaggle access token")
     ap.add_argument("--data-owner", help="account: Kaggle user that owns the matcha-bench-data dataset")

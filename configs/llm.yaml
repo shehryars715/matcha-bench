@@ -1,0 +1,61 @@
+# LLM baseline (stage 1b): MentalGLM (Zhai et al.) on MATCHA, run on Kaggle T4s.
+#
+# 1. Sanity check: the released MentalGLM-chat on its own test sets (SOS-HL-1K, SocialCD-3K), to
+#    compare with the paper's 85.12 / 71.04 before trusting MATCHA numbers.
+# 2. Baseline: LoRA fine-tuning of the released MentalGLM-chat on the MATCHA tasks (QLoRA, label-only
+#    answers), scored on the same test sets as the BERT baselines.
+task_root: data/tasks
+output_root: outputs/llm/finetune      # <task>/<tag>/seed<k>/metrics.json, as for the BERT runs
+convert_dir: /tmp/matcha-llm           # converted weights (19 GB per model; not kept in outputs/)
+hf_cache: /tmp/hf-cache
+seeds: [42]
+
+# tag -> ChatGLM-format checkpoint on the hub (converted to the native glm format on first use)
+models:
+  mentalglm-chat: zwzzz/MentalGLM-chat
+  mentalglm: zwzzz/MentalGLM
+  glm-4-9b-chat: zai-org/glm-4-9b-chat   # optional control: same recipe, no mental-health tuning
+
+sanity:
+  output_root: outputs/llm/sanity
+  data_cache: outputs/llm/_mentalglm_data
+  tasks: [suicide, cognitive]
+  runs:                                  # quant fp16 = the model as released, split over both GPUs
+    - {model: mentalglm-chat, quant: fp16}
+    - {model: mentalglm-chat, quant: 4bit}   # what the MATCHA fine-tuning uses
+  batch_size: 16
+  max_new_tokens: 48                     # the label sentence; longest cognitive answer ~25 tokens
+
+defaults:
+  quant: 4bit                            # NF4 base weights (QLoRA); a 9B model does not fit a T4 in fp16
+  lora_rank: 8                           # LLaMA-Factory defaults (the paper does not give its values)
+  lora_alpha: 16
+  lora_dropout: 0.0
+  lora_target: [q_proj, k_proj, v_proj, o_proj, gate_up_proj, down_proj]
+  learning_rate: 1.0e-4                  # paper: AdamW, 1e-4, 1% warm-up, batch 4 x 8 accumulation, fp16
+  warmup_ratio: 0.01
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  batch_size: 4
+  grad_accum: 8
+  epochs: 2
+  early_stopping_patience: null          # best dev epoch is kept either way
+  max_seq_len: 1024                      # paper's input limit
+  max_text_chars: null                   # set per task below to what the BERT baselines saw
+  max_text_tokens: null
+  max_new_tokens: 24
+  eval_batch_size: 16
+  subset_seed: 0                         # fixed subsets, identical for every seed and model
+  train_subset: 4000                     # training examples per task (stratified); null = all
+  dev_subset: 500                        # dev examples labelled after each epoch
+  test_subset: null                      # null = the full test set
+  keep_adapter: true
+
+task_overrides:
+  # Inputs as the BERT baselines saw them: posts cut at 128 characters, user timelines at 512.
+  # The two post-level tasks have 20,000 test posts; a fixed stratified 2,000 keeps a run short,
+  # and the BERT runs are re-scored on the same posts from their saved predictions.
+  matcha_disorder_post: {max_text_chars: 128, test_subset: 2000}
+  matcha_disorder_post_masked: {max_text_chars: 128, test_subset: 2000}
+  matcha_user_binary_masked: {max_text_chars: 512}
+  matcha_user_multiclass_masked: {max_text_chars: 512}

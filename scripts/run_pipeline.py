@@ -15,6 +15,11 @@ Stages (configs/pipeline.yaml) run in order:
   otherwise runs go one at a time across all GPUs;
 * tfidf, summary: quick CPU steps once everything else is done. The summary writes the results
   tables and one paired-bootstrap comparison per model pair listed under `compare`.
+LLM baseline (configs/pipeline_llm.yaml):
+* pip: installs extra packages (peft, bitsandbytes) into the session;
+* llm_sanity: scripts/run_llm_eval.py, the released MentalGLM on its own test sets;
+* llm_probe: times a few LoRA training steps per task (scripts/run_llm_finetune.py --probe-steps);
+* finetune with `script: scripts/run_llm_finetune.py`: the LoRA runs, scheduled like the BERT runs.
 The session log of what happened is appended to outputs/pipeline_log.jsonl.
 """
 
@@ -103,11 +108,15 @@ def gpu_slots() -> list[str | None]:
     return [str(i) for i in range(n)] if n > 1 else [None]
 
 
-def start_finetune(task: str, model: str, seed: int, device: str | None):
+def start_finetune(task: str, model: str, seed: int, device: str | None, script: str = "scripts/run_finetune.py",
+                   config: str | None = None, deadline: float | None = None):
     """Launch one fine-tuning run. In parallel mode its output goes to outputs/logs/finetune/."""
-    cmd = [PY, "scripts/run_finetune.py", "--tasks", task, "--models", model, "--seeds", str(seed)]
+    cmd = [PY, script, "--tasks", task, "--models", model, "--seeds", str(seed)]
+    cmd += ["--config", config] if config else []
     cmd += ["--set", *EXTRA["finetune"]] if EXTRA["finetune"] else []
     env, log_file = dict(os.environ), None
+    if deadline is not None:  # long runs (LLM) stop themselves instead of being killed with the session
+        env["PIPELINE_DEADLINE"] = str(deadline)
     if device is not None:
         env["CUDA_VISIBLE_DEVICES"] = device
         log_dir = REPO_ROOT / "outputs" / "logs" / "finetune"
@@ -123,6 +132,9 @@ def start_finetune(task: str, model: str, seed: int, device: str | None):
 def stage_finetune(stage, deadline) -> bool:
     ft = load_config(resolve_path(stage["config"]))
     out_root = resolve_path(ft["output_root"])
+    script = stage.get("script", "scripts/run_finetune.py")
+    extra = {} if script == "scripts/run_finetune.py" else {"script": script, "config": stage["config"],
+                                                             "deadline": deadline}
     reserve = stage.get("minutes_per_run", {})
     completed_all = True
     queue = []
@@ -140,7 +152,7 @@ def stage_finetune(stage, deadline) -> bool:
 
     slots = gpu_slots()
     running: dict[int, tuple] = {}  # slot index -> (job, process, log file)
-    paused = False
+    paused, prepared = False, False
     while running or (queue and not paused):
         for i, device in enumerate(slots):
             if i in running or not queue or paused:
@@ -150,7 +162,12 @@ def stage_finetune(stage, deadline) -> bool:
                 log_event(stage=stage["name"], status="paused (time)", next=f"{task}/{model}/seed{seed}")
                 paused = True
                 break
-            running[i] = (queue.pop(0), *start_finetune(task, model, seed, device))
+            if extra and stage.get("prepare") and not prepared:  # e.g. download/convert the LLM once
+                if run([PY, *stage["prepare"]]) != 0:
+                    log_event(stage=stage["name"], status="prepare failed")
+                    return False
+                prepared = True
+            running[i] = (queue.pop(0), *start_finetune(task, model, seed, device, **extra))
         time.sleep(POLL_SECONDS if running else 0)
         for i in [i for i, (_, proc, _) in running.items() if proc.poll() is not None]:
             (task, model, seed), proc, log_file = running.pop(i)
@@ -167,6 +184,50 @@ def stage_finetune(stage, deadline) -> bool:
         return False
     log_event(stage=stage["name"], status="done" if completed_all else "done (some runs failed or waiting)")
     return completed_all
+
+
+def stage_pip(stage, deadline) -> bool:
+    code = run([PY, "-m", "pip", "install", "-q", *stage["packages"]])
+    log_event(stage=stage["name"], status="done" if code == 0 else "failed", returncode=code)
+    return code == 0
+
+
+def stage_llm_sanity(stage, deadline) -> bool:
+    """The released MentalGLM on its own test sets (scripts/run_llm_eval.py skips finished runs)."""
+    cfg = load_config(resolve_path(stage["config"]))
+    sc = cfg["sanity"]
+    out = resolve_path(sc["output_root"])
+    missing = [f"{r['model']}__{r['quant']}/{t}" for r in sc["runs"] for t in sc["tasks"]
+               if not (out / f"{r['model']}__{r['quant']}" / t / "metrics.json").exists()]
+    if not missing:
+        log_event(stage=stage["name"], status="already done")
+        return True
+    if minutes_left(deadline) < stage.get("minutes", 60):
+        log_event(stage=stage["name"], status="not started (time)")
+        return False
+    code = run([PY, "scripts/run_llm_eval.py", "--config", stage["config"]])
+    log_event(stage=stage["name"], status="done" if code == 0 else "failed", returncode=code)
+    return code == 0
+
+
+def stage_llm_probe(stage, deadline) -> bool:
+    """Time a few LoRA training steps and a small generation pass per task, to plan GPU time."""
+    cfg = load_config(resolve_path(stage["config"]))
+    probe_dir = resolve_path(cfg["output_root"]) / "_probe"
+    ok = True
+    for task in stage["tasks"]:
+        for model in stage["models"]:
+            if (probe_dir / f"{task}__{model}.json").exists():
+                continue
+            if minutes_left(deadline) < stage.get("minutes_per_task", 20):
+                log_event(stage=stage["name"], status="paused (time)", next=f"{task}/{model}")
+                return False
+            code = run([PY, "scripts/run_llm_finetune.py", "--config", stage["config"], "--tasks", task,
+                        "--models", model, "--probe-steps", str(stage.get("steps", 6))])
+            log_event(stage=stage["name"], run=f"{task}/{model}", returncode=code)
+            ok &= code == 0
+    log_event(stage=stage["name"], status="done" if ok else "done (some probes failed)")
+    return True  # a failed probe should not block the rest of the session
 
 
 def stage_tfidf(stage, deadline) -> bool:
@@ -186,6 +247,9 @@ STAGES = {
     "finetune": stage_finetune,
     "tfidf": stage_tfidf,
     "summary": stage_summary,
+    "pip": stage_pip,
+    "llm_sanity": stage_llm_sanity,
+    "llm_probe": stage_llm_probe,
 }
 
 

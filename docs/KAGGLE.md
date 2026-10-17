@@ -107,6 +107,29 @@ Open `notebooks/kaggle_matcha_bench.ipynb` on Kaggle, attach both datasets, choo
 and run all cells. For long jobs use **Save Version → Save & Run All** so the job runs headless
 for up to 12 h, and `/kaggle/working` (≤ 20 GB) is kept as output.
 
+## 3c. The LLM baseline (MentalGLM)
+
+The LLM baseline has its own pipeline file, run in the same kind of sessions:
+
+```bash
+python scripts/kaggle_pipeline.py start --pipeline configs/pipeline_llm.yaml
+```
+
+- **Model.** The released `zwzzz/MentalGLM-chat` (GLM-4-9B) is downloaded and converted to the
+  native transformers `glm` format at the start of each session (about 19 GB, kept in `/tmp`, not
+  in the output). The released checkpoint ships code for transformers 4.43, which no longer runs on
+  current versions. `src/matcha_bench/llm/convert.py` explains the conversion; it reproduces the
+  original model's outputs exactly (checked on small random models).
+- **Sanity check** (`llm_sanity` stage). MentalGLM-chat labels its own test sets, so the scores
+  compare with the paper's 85.12 (SOS-HL-1K) and 71.04 (SocialCD-3K). It runs twice: in fp16
+  across both GPUs, and in 4-bit on one GPU, which is the setting the MATCHA fine-tuning uses.
+- **Timing probes** (`llm_probe` stage). A few LoRA steps on the shortest and the longest MATCHA
+  inputs. The measured speeds set the training sizes in `configs/llm.yaml`.
+- **MATCHA fine-tuning** (`finetune-llm` stage, switched on after the probes). One 4-bit LoRA run
+  per GPU and task, with the paper's settings. See `configs/llm.yaml` for the full list.
+
+Results go to `outputs/llm/` (`sanity/`, `finetune/<task>/<model>/seed<k>/`, `finetune/_probe/`).
+
 ## 4. Resuming across sessions
 
 - **DAPT** saves a checkpoint every `save_steps` and resumes automatically from the last one in

@@ -69,3 +69,23 @@ def test_a_failed_run_is_reported_but_others_continue(pipeline):
     codes = {e["run"]: e["returncode"] for e in events if "run" in e}
     assert codes["t1/broken/seed1"] == 3 and codes["t1/a/seed1"] == 0
     assert events[-1]["status"] == "done (some runs failed or waiting)"
+
+
+def test_llm_stage_runs_its_own_script_and_prepares_once(pipeline, monkeypatch):
+    rp, stage, events, launched = pipeline
+    calls, prepared = [], []
+
+    def fake_start(task, model, seed, device, **extra):
+        calls.append(extra)
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(0.2)"])
+        launched.append((task, model, seed, device, 1, proc))
+        return proc, None
+
+    monkeypatch.setattr(rp, "start_finetune", fake_start)
+    monkeypatch.setattr(rp, "run", lambda cmd: prepared.append(cmd) or 0)
+    llm = dict(stage(["a"]), script="scripts/run_llm_finetune.py", prepare=["scripts/run_llm_finetune.py", "--prepare-only"])
+    deadline = time.time() + 3600
+    assert rp.stage_finetune(llm, deadline=deadline) is True
+    assert len(prepared) == 1 and prepared[0][1:] == llm["prepare"]
+    assert len(calls) == 2
+    assert all(c == {"script": "scripts/run_llm_finetune.py", "config": llm["config"], "deadline": deadline} for c in calls)

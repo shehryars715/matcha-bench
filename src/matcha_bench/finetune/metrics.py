@@ -18,18 +18,23 @@ def predictions_from_logits(logits: np.ndarray, problem_type: str) -> np.ndarray
 
 
 def classification_metrics(
-    labels: np.ndarray, preds: np.ndarray, problem_type: str, average: str, label_names: list[str]
+    labels: np.ndarray, preds: np.ndarray, problem_type: str, average: str, label_names: list[str],
+    labels_list: list[int] | None = None,
 ) -> dict:
+    """`labels_list` restricts averaging to the real classes, so a prediction outside them (an
+    unparsable LLM answer, coded -1) counts as wrong without becoming a class of its own."""
     labels, preds = np.asarray(labels), np.asarray(preds)
-    if average == "binary":
-        p, r, f, _ = precision_recall_fscore_support(labels, preds, average="binary", pos_label=1, zero_division=0)
+    if average == "binary":  # anything but 1 (including -1) is a negative prediction
+        p, r, f, _ = precision_recall_fscore_support(labels, np.where(preds == 1, 1, 0), average="binary",
+                                                     pos_label=1, zero_division=0)
     else:
-        p, r, f, _ = precision_recall_fscore_support(labels, preds, average=average, zero_division=0)
+        p, r, f, _ = precision_recall_fscore_support(labels, preds, average=average, labels=labels_list,
+                                                     zero_division=0)
     out = {
         "f1": float(f),
         "precision": float(p),
         "recall": float(r),
-        "macro_f1": float(f1_score(labels, preds, average="macro", zero_division=0)),
+        "macro_f1": float(f1_score(labels, preds, average="macro", labels=labels_list, zero_division=0)),
         "accuracy": float(accuracy_score(labels, preds)),
         "average": average,
     }

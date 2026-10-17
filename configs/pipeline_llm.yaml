@@ -1,0 +1,38 @@
+# LLM baseline pipeline (stage 1b, MentalGLM on MATCHA), run in Kaggle sessions like the BERT one:
+#   python scripts/kaggle_pipeline.py start --pipeline configs/pipeline_llm.yaml
+# Settings for the models, prompts and LoRA training are in configs/llm.yaml.
+#
+# Session 5 (first LLM session): the sanity check and timing probes only. The training sizes in
+# configs/llm.yaml (train_subset, epochs, seeds) are then set from the measured speeds, and the
+# finetune-llm stage below is switched on.
+budget_hours: 9.0
+safety_margin_minutes: 30
+finetune_one_run_per_gpu: true   # one 4-bit LoRA run per T4
+
+stages:
+  - name: llm-packages
+    type: pip
+    packages: ["peft>=0.13", "bitsandbytes>=0.45", "transformers>=4.46"]
+  # The released MentalGLM-chat on its own test sets (SOS-HL-1K, SocialCD-3K), in fp16 over both
+  # GPUs and in 4-bit on one; downloads and converts the model first (~19 GB, kept in /tmp).
+  - name: llm-sanity
+    type: llm_sanity
+    config: configs/llm.yaml
+    minutes: 60
+  # A few LoRA steps and a 64-item generation pass on the shortest and the longest MATCHA inputs.
+  - name: llm-probe
+    type: llm_probe
+    config: configs/llm.yaml
+    tasks: [matcha_disorder_post_masked, matcha_user_multiclass_masked]
+    models: [mentalglm-chat]
+    steps: 6
+    minutes_per_task: 25
+  # Switched on once the probes have set the training sizes:
+  # - name: finetune-llm
+  #   type: finetune
+  #   script: scripts/run_llm_finetune.py
+  #   config: configs/llm.yaml
+  #   prepare: [scripts/run_llm_finetune.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, --prepare-only]
+  #   tasks: [matcha_disorder_post, matcha_disorder_post_masked, matcha_user_binary_masked, matcha_user_multiclass_masked]
+  #   models: [mentalglm-chat]
+  #   minutes_per_run: {default: 120}

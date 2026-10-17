@@ -25,6 +25,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
+# LLM baseline (MentalGLM): native GLM support needs transformers >= 4.46
+llm = ["transformers>=4.46", "peft>=0.13", "bitsandbytes>=0.45"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

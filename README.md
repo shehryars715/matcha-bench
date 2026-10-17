@@ -35,7 +35,7 @@ corpus is private and covers depression only. Here the same recipe is run on MAT
 | Step | What | Status |
 |---|---|---|
 | 1a | **Chinese MentalBERT on MATCHA.** Pre-train on MATCHA training users, fine-tune on the MATCHA tasks, and check the reproduction on the paper's own tasks. | Done (results below) |
-| 1b | **LLM baseline** following [MentalGLM](https://github.com/zwzzzQAQ/MentalGLM) (Zhai et al.): LoRA instruction tuning of a ~9B Chinese LLM on the MATCHA tasks | Planned |
+| 1b | **LLM baseline** following [MentalGLM](https://github.com/zwzzzQAQ/MentalGLM) (Zhai et al.): the released MentalGLM-chat (GLM-4-9B), LoRA-tuned on the MATCHA tasks (4-bit, label-only answers, 3 seeds) | In progress: sanity check on the paper's own tasks running |
 | 2 | **A new method**, evaluated against the step-1 baselines | Planned |
 
 ## Pipeline
@@ -197,6 +197,12 @@ python scripts/summarize_results.py --compare matcha-depression matcha-random
 
 Running on Kaggle from the command line (free T4 ×2): `python scripts/kaggle_pipeline.py start` runs the whole GPU pipeline in
 resumable 9-hour sessions (run it again after each session finishes). See [`docs/KAGGLE.md`](docs/KAGGLE.md).
+
+**LLM baseline (MentalGLM):** `python scripts/kaggle_pipeline.py start --pipeline configs/pipeline_llm.yaml`.
+The released checkpoint is converted to the native transformers `glm` format
+([`src/matcha_bench/llm/convert.py`](src/matcha_bench/llm/convert.py); outputs identical to the original
+code), checked on MentalGLM's own test sets against the paper (85.12 / 71.04), then LoRA-tuned per MATCHA
+task. Settings: [`configs/llm.yaml`](configs/llm.yaml); details in [`docs/KAGGLE.md`](docs/KAGGLE.md) §3c.
 
 ## Reproduction notes
 

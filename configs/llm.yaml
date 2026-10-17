@@ -23,6 +23,9 @@ sanity:
   runs:                                  # quant fp16 = the model as released, split over both GPUs
     - {model: mentalglm-chat, quant: fp16}
     - {model: mentalglm-chat, quant: 4bit}   # what the MATCHA fine-tuning uses
+    # One post at a time, no padding: session 6's batched fp16 answers matched the paper's released
+    # suicide answers on 224/250 posts; this shows whether batching (left padding) explains the rest.
+    - {model: mentalglm-chat, quant: fp16, batch_size: 1}
   batch_size: 16
   max_new_tokens: 48                     # the label sentence; longest cognitive answer ~25 tokens
 

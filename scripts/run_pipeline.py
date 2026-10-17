@@ -197,8 +197,9 @@ def stage_llm_sanity(stage, deadline) -> bool:
     cfg = load_config(resolve_path(stage["config"]))
     sc = cfg["sanity"]
     out = resolve_path(sc["output_root"])
-    missing = [f"{r['model']}__{r['quant']}/{t}" for r in sc["runs"] for t in sc["tasks"]
-               if not (out / f"{r['model']}__{r['quant']}" / t / "metrics.json").exists()]
+    from run_llm_eval import sanity_run_name  # same folder names as the script writes
+    missing = [f"{sanity_run_name(r)}/{t}" for r in sc["runs"] for t in sc["tasks"]
+               if not (out / sanity_run_name(r) / t / "metrics.json").exists()]
     if not missing:
         log_event(stage=stage["name"], status="already done")
         return True

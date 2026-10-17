@@ -104,7 +104,9 @@ def status(args) -> None:
 def download(run: dict, pattern: str) -> "Path":
     dest = REPO_ROOT / "outputs" / "kaggle" / run["slug"]
     dest.mkdir(parents=True, exist_ok=True)
-    kaggle("kernels", "output", ref(run), "-p", str(dest), "--file-pattern", pattern, "-q", "-o")
+    # 200 files per page (the most Kaggle allows): a session's output now lists ~500 files, and at the
+    # default 20 per page the download is slow enough to time out
+    kaggle("kernels", "output", ref(run), "-p", str(dest), "--file-pattern", pattern, "--page-size", "200", "-q", "-o")
     return dest
 
 

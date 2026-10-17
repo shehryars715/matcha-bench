@@ -5,8 +5,8 @@ with the paper (MentalGLM-chat: SOS-HL-1K F1 85.12, SocialCD-3K micro-F1 71.04).
     python scripts/run_llm_eval.py --model mentalglm-chat --quant 4bit --tasks suicide
     python scripts/run_llm_eval.py --prepare-only        # download and convert the models only
 
-Results: outputs/llm/sanity/<model>__<quant>/<task>/{metrics.json, answers.jsonl}. A finished
-(model, quant, task) is skipped.
+Results: outputs/llm/sanity/<model>__<quant>[__bs<n>]/<task>/{metrics.json, answers.jsonl}; a run
+with its own batch_size gets the __bs suffix. A finished (run, task) is skipped.
 """
 
 import argparse
@@ -27,6 +27,11 @@ TASK_META = {  # label names and averaging as in the paper's Table 3
                    "mind_reading", "fortune_telling", "magnification", "emotional_reasoning",
                    "should_statements", "labeling", "blaming_oneself", "blaming_others"], "micro"),
 }
+def sanity_run_name(run: dict) -> str:
+    """Folder name of a sanity run; shared with the pipeline's done-check."""
+    return f"{run['model']}__{run['quant']}" + (f"__bs{run['batch_size']}" if run.get("batch_size") else "")
+
+
 PAPER = {"mentalglm-chat": {"suicide": 85.12, "cognitive": 71.04}, "mentalglm": {"suicide": 79.20, "cognitive": 73.06}}
 
 
@@ -49,7 +54,8 @@ def main():
 
     for run in runs:
         tag, quant = run["model"], run["quant"]
-        name = f"{tag}__{quant}" + (f"__limit{args.limit}" if args.limit else "")
+        name = sanity_run_name(run) + (f"__limit{args.limit}" if args.limit else "")
+        batch_size = args.batch_size or run.get("batch_size") or sc["batch_size"]
         todo = [t for t in tasks if not (out_root / name / t / "metrics.json").exists()]
         if not todo and not args.prepare_only:
             log.info("Skipping %s (done)", name)
@@ -65,10 +71,10 @@ def main():
                 df = df.head(args.limit)
             label_names, average = TASK_META[task]
             res = evaluate_texts(model, tokenizer, get_prompt(task), df["text"].tolist(), df["label"].tolist(),
-                                 label_names, average, batch_size=args.batch_size or sc["batch_size"],
+                                 label_names, average, batch_size=batch_size,
                                  max_new_tokens=sc["max_new_tokens"])
             m = res["metrics"]
-            m.update({"model_tag": tag, "model_path": path, "quant": quant, "task": task,
+            m.update({"model_tag": tag, "model_path": path, "quant": quant, "task": task, "batch_size": batch_size,
                       "paper_f1": PAPER.get(tag, {}).get(task)})
             out = out_root / name / task
             save_json(m, out / "metrics.json")

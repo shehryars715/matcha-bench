@@ -2,9 +2,11 @@
 #   python scripts/kaggle_pipeline.py start --pipeline configs/pipeline_llm.yaml
 # Settings for the models, prompts and LoRA training are in configs/llm.yaml.
 #
-# Session 5 (first LLM session): the sanity check and timing probes only. The training sizes in
-# configs/llm.yaml (train_subset, epochs, seeds) are then set from the measured speeds, and the
-# finetune-llm stage below is switched on.
+# Sessions 5-6 ran the sanity check and the timing probes (both are skipped once done). The probes
+# (T4, 4-bit, batch 4 x 8) measured 16.5 s per optimizer step on posts (~95 tokens) and 49 s on user
+# timelines (~400 tokens); generation labels 4.9 posts/s and 1.7 timelines/s. Per run, 2 epochs on
+# up to 4,000 examples with dev checks and the test pass: disorder_post(+masked) ~80 min,
+# user_binary_masked ~140, user_multiclass_masked ~240; 12 runs ~27 GPU-h, ~14 h with 2 GPUs.
 budget_hours: 9.0
 safety_margin_minutes: 30
 finetune_one_run_per_gpu: true   # one 4-bit LoRA run per T4
@@ -27,12 +29,12 @@ stages:
     models: [mentalglm-chat]
     steps: 6
     minutes_per_task: 25
-  # Switched on once the probes have set the training sizes:
-  # - name: finetune-llm
-  #   type: finetune
-  #   script: scripts/run_llm_finetune.py
-  #   config: configs/llm.yaml
-  #   prepare: [scripts/run_llm_finetune.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, --prepare-only]
-  #   tasks: [matcha_disorder_post, matcha_disorder_post_masked, matcha_user_binary_masked, matcha_user_multiclass_masked]
-  #   models: [mentalglm-chat]
-  #   minutes_per_run: {default: 120}
+  # The MATCHA baseline: one 4-bit LoRA run per GPU; longest task first so sessions pack better.
+  - name: finetune-llm
+    type: finetune
+    script: scripts/run_llm_finetune.py
+    config: configs/llm.yaml
+    prepare: [scripts/run_llm_finetune.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, --prepare-only]
+    tasks: [matcha_user_multiclass_masked, matcha_user_binary_masked, matcha_disorder_post, matcha_disorder_post_masked]
+    models: [mentalglm-chat]
+    minutes_per_run: {default: 95, matcha_user_multiclass_masked: 260, matcha_user_binary_masked: 155}

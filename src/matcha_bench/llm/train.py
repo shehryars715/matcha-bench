@@ -109,6 +109,8 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
         log.info("Skipping %s / %s / seed %d (already done)", task, model_tag, seed)
         return None
     t_start = time.time()
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()  # peak_gpu_gb is per run
     set_seed(seed)
     meta, splits = load_task(task_root, task)
     prompt = get_prompt(task)

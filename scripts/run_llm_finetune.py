@@ -10,7 +10,10 @@ GPU time. Same command-line shape as scripts/run_finetune.py, so the pipeline ca
 """
 
 import argparse
+import gc
 import os
+
+import torch
 
 import _bootstrap  # noqa: F401
 from matcha_bench.config import load_config, resolve_path
@@ -40,9 +43,13 @@ def main():
             continue
         for task in tasks:
             hp = {**cfg["defaults"], **(cfg.get("task_overrides") or {}).get(task, {})}
-            for seed in args.seeds or cfg["seeds"]:
+            seeds = args.seeds or cfg["seeds"]
+            for seed in seeds[:1] if args.probe_steps else seeds:  # timing does not depend on the seed
                 run_llm_finetune(task_root, task, path, tag, resolve_path(cfg["output_root"]), seed, hp,
                                  deadline=deadline, probe_steps=args.probe_steps)
+                gc.collect()  # free the previous run's 9B model before loading the next one
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":

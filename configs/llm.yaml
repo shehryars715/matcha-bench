@@ -8,7 +8,7 @@ task_root: data/tasks
 output_root: outputs/llm/finetune      # <task>/<tag>/seed<k>/metrics.json, as for the BERT runs
 convert_dir: /tmp/matcha-llm           # converted weights (19 GB per model; not kept in outputs/)
 hf_cache: /tmp/hf-cache
-seeds: [42]
+seeds: [42, 43, 44]                    # as for the BERT baselines (user, 2026-10-17)
 
 # tag -> ChatGLM-format checkpoint on the hub (converted to the native glm format on first use)
 models:

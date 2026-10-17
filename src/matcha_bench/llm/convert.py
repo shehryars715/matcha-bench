@@ -35,7 +35,7 @@ log = get_logger()
 
 # Native tokenizer with the same vocabulary (THUDM's own conversion of glm-4-9b-chat).
 TOKENIZER_REPO = "zai-org/glm-4-9b-chat-hf"
-TOKENIZER_FILES = ["tokenizer.json", "tokenizer_config.json", "special_tokens_map.json"]
+TOKENIZER_FILES = ["tokenizer.json", "tokenizer_config.json"]  # all that repo has; both required
 
 _LAYER = re.compile(r"^transformer\.encoder\.layers\.(\d+)\.(.+)$")
 _RENAME = {
@@ -146,8 +146,7 @@ def _copy_tokenizer(out: Path, tokenizer_source: str, chat_template: str | None,
         else:
             from huggingface_hub import hf_hub_download
             src = Path(hf_hub_download(tokenizer_source, name, cache_dir=cache_dir))
-        if src.exists():
-            shutil.copy2(src, out / name)
+        shutil.copy2(src, out / name)
     if chat_template:
         # keep the source model's own template (the one it was fine-tuned with)
         cfg_path = out / "tokenizer_config.json"
@@ -194,6 +193,9 @@ def convert_chatglm_checkpoint(
     cfg = glm_config_from_chatglm(src_cfg, dtype)
     torch_dtype = getattr(torch, dtype)
 
+    # tokenizer first: a problem there fails in seconds, not after a 19 GB download
+    _copy_tokenizer(out, tokenizer_source, src_tok_cfg.get("chat_template"), cache)
+
     weight_map, total = {}, 0
     for n, shard in enumerate(shards, 1):
         path = fetch(shard)
@@ -221,7 +223,6 @@ def convert_chatglm_checkpoint(
     (out / "config.json").write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     gen = {"do_sample": False, "eos_token_id": cfg["eos_token_id"], "pad_token_id": cfg["pad_token_id"]}
     (out / "generation_config.json").write_text(json.dumps(gen, indent=2), encoding="utf-8")
-    _copy_tokenizer(out, tokenizer_source, src_tok_cfg.get("chat_template"), cache)
     (out / ".converted").write_text(json.dumps({"source": source, "dtype": dtype}), encoding="utf-8")
     log.info("Converted %s -> %s (%.1f GB)", source, out, total / 1e9)
     return out

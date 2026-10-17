@@ -11,7 +11,7 @@ that were made, and what remains to do.
    them on MATCHA tasks. MATCHA has no tasks or baselines of its own, so these scores are the
    reference point for anything that follows.
    - **1a. Chinese MentalBERT on MATCHA.** Lexicon-guided domain-adaptive pre-training (DAPT) on
-     MATCHA, then fine-tuning on the MATCHA tasks. *In progress.*
+     MATCHA, then fine-tuning on the MATCHA tasks. *Done (2026-10-17); results in §6.*
    - **1b. An LLM baseline following MentalGLM.** LoRA instruction tuning of a ~9B Chinese LLM on the
      MATCHA tasks. *Planned; the exact setup is still to be decided (§3).*
 2. **Stage 2: a new method.** The paper's contribution. It is evaluated against the stage-1
@@ -105,17 +105,17 @@ The Limitations section should state that the lexicon was LLM-filtered and not h
 
 ## 5. Compute budget (Kaggle T4 ×2)
 
-Measured on Kaggle (sessions 1–3, October 2026), except where marked as an estimate.
+Measured on Kaggle (sessions 1–4, October 2026).
 
 | Stage | Runs | Per run | Total |
 |---|---|---|---|
 | DAPT (281k chunks × 3 epochs, 6,594 steps at ~1.95 s/step) | 3 | 3.6 h | **10.8 h** (done) |
 | Fine-tune: Chinese MentalBERT tasks, 6 models × 3 seeds | 72 + 7 | Suicide 1.9 min, Cognitive 5.7, Waimai 13.6, EWECT-epidemic 14.5, EWECT-usual 32 | ≈ 14 h (done) |
-| Fine-tune: 4 core MATCHA tasks, 4 models × 3 seeds, one run per GPU | 48 | estimated per run on one T4: disorder_post ~50 min (×2 with its masked twin), user_binary_masked ~16, user_multiclass_masked ~46 | ≈ 16 h of session time, 2 runs at a time (estimate) |
-| **Total** | | | **≈ 41 h of session time** |
+| Fine-tune: 4 core MATCHA tasks, 4 models × 3 seeds, one run per GPU | 48 | training time on one T4: disorder_post 14 min, disorder_post_masked 19, user_binary_masked 6, user_multiclass_masked 16 | ≈ 6 h of session time, 2 runs at a time (done, with TF-IDF and the summary) |
+| **Total** | | | **≈ 31 h of session time** |
 
 Kaggle's quota counts session time, so running one fine-tuning run per GPU does twice the work per
-quota hour. The single-GPU times above are estimates; replace them after the first MATCHA session.
+quota hour. The MATCHA runs took about a third of the time estimated before session 4.
 
 Cuts already made (2026-10-13), from about 80 GPU-h:
 - EWECT-usual stopped after 7 of 18 runs: the sanity check had already passed on 4 tasks (≈ 6 h saved);
@@ -143,6 +143,50 @@ CPU-only steps can run on a laptop: data preparation, task building, mining, cor
 6. **Where every baseline struggles** (per-disorder and per-task results). This tells stage 2 where
    a new method has the most room.
 
+### Stage-1 results (Kaggle, 2026-10-16)
+
+**MATCHA baselines** (test macro-F1, mean ± std over 3 seeds; TF-IDF is one run):
+
+| Model | disorder_post | disorder_post_masked | user_binary_masked | user_multiclass_masked |
+|---|---|---|---|---|
+| tfidf-lr | 48.8 | 39.6 | 90.1 | 41.7 |
+| bert-wwm-ext | 51.6 ± 0.8 | 42.3 ± 1.5 | 91.6 ± 0.6 | 49.3 ± 1.5 |
+| chinese-mentalbert | 51.6 ± 3.3 | 43.7 ± 2.0 | 90.5 ± 0.9 | 50.3 ± 1.0 |
+| matcha-random | 51.5 ± 2.6 | 45.2 ± 1.9 | 91.5 ± 1.0 | 51.5 ± 1.0 |
+| matcha-depression | 51.3 ± 2.1 | 44.9 ± 1.9 | 92.1 ± 0.7 | 52.3 ± 0.4 |
+
+Answers to the questions above (paired bootstrap per seed, p < 0.05):
+
+1. **Corpus effect: yes, on the masked tasks.** `matcha-random` beats `bert-wwm-ext` by +2.9 on
+   disorder_post_masked and +2.2 on user_multiclass_masked (significant for 2 of 3 seeds each). On
+   disorder_post (−0.1) and user_binary_masked (−0.2) there is no gain.
+2. **Lexicon effect: no.** `matcha-depression` − `matcha-random` is −0.3, −0.4, +0.6 and +0.8;
+   none of the 12 task × seed pairs is significant. The Chinese MentalBERT claim does not carry over
+   to MATCHA; the gain comes from the corpus.
+3. **Corpus comparison:** `matcha-depression` is ahead of the released Chinese MentalBERT on three
+   tasks (+1.2 to +2.0; significant for 1–2 of 3 seeds each) and tied on disorder_post.
+4. **Shortcut reliance: large.** Masking names costs 9.3 (bert-wwm-ext), 7.9 (chinese-mentalbert),
+   6.3 (matcha-random) and 6.4 (matcha-depression) points on disorder_post, and 9.3 for TF-IDF. MATCHA
+   pre-training reduces the drop somewhat but does not remove it.
+5. **Multi-disorder lexicon:** not run on the MATCHA tasks (dropped to save GPU time).
+6. **Where the baselines struggle** (per-class test F1, averaged over the four BERT models):
+
+| Class | disorder_post | disorder_post_masked | user_multiclass_masked |
+|---|---|---|---|
+| ADHD | 58.7 | 50.1 | 49.9 |
+| ASD | 46.1 | 45.4 | 66.8 |
+| BD | 21.6 | 19.6 | 43.8 |
+| DEP | 67.6 | 63.7 | 48.0 |
+| GAD | 73.6 | 70.5 | 53.3 |
+| OCD | 52.4 | 39.1 | 42.8 |
+| SZ | 40.5 | 19.8 | 19.6 |
+| CONTROL | | | 82.4 |
+
+- Bipolar disorder and schizophrenia are the weakest classes everywhere. Schizophrenia and OCD lose
+  the most when names are hidden, so their posts are recognised mainly by the disorder or drug name.
+- user_binary_masked is near its ceiling (TF-IDF 90.1, best BERT 92.1) and will separate methods
+  poorly; the 7-way and 8-way tasks leave the most room for stage 2.
+
 ### Preliminary observations
 
 **Local CPU runs (2026-10-11)**
@@ -166,14 +210,17 @@ CPU-only steps can run on a laptop: data preparation, task building, mining, cor
 
 **Sanity check on Kaggle (2026-10-12; test F1, mean of 3 seeds)**
 
-| Model | Suicide | Cognitive (micro) | Waimai |
-|---|---|---|---|
-| bert-base-chinese | 79.8 | 71.9 | 84.3 |
-| bert-wwm-ext | 80.6 | 73.7 | 84.8 |
-| chinese-mentalbert | 81.5 | 73.9 | 85.5 |
-| matcha-random | 81.6 | 74.3 | 84.2 |
-| matcha-depression | 81.9 | 74.6 | 84.4 |
-| matcha-multidisorder | 80.6 | 73.6 | 84.7 |
+| Model | Suicide | Cognitive (micro) | Waimai | EWECT-epidemic |
+|---|---|---|---|---|
+| bert-base-chinese | 79.8 | 71.9 | 84.5 | 65.2 |
+| bert-wwm-ext | 80.6 | 73.7 | 84.8 | 65.9 |
+| chinese-mentalbert | 81.5 | 73.9 | 85.5 | 65.9 |
+| matcha-random | 81.6 | 74.3 | 84.2 | 65.8 |
+| matcha-depression | 81.9 | 74.6 | 84.4 | 67.1 |
+| matcha-multidisorder | 80.6 | 73.6 | 84.7 | 66.7 |
+
+EWECT-usual was stopped after 7 of 18 runs: bert-wwm-ext 75.5, matcha-random 76.0,
+matcha-depression 76.3 (one seed).
 
 - Our Chinese MentalBERT scores are close to those in MentalGLM's table (81.30 / 74.91), so the
   fine-tuning setup reproduces. Those splits differ slightly from ours.
@@ -197,7 +244,7 @@ The paper's contribution is the stage-2 method. The baselines enter as setup and
 
 ## 8. To do
 
-- [ ] Finish the stage-1 fine-tuning on Kaggle (`python scripts/kaggle_pipeline.py start`).
+- [x] Finish the stage-1 fine-tuning on Kaggle (session 4, 2026-10-16; results in §6).
 - [x] Decide which runs to cut (§5): core 4 MATCHA tasks, EWECT-usual stopped.
 - [x] Effective fine-tuning batch: 16 for the MATCHA tasks (one run per GPU); 32 for the
       sanity-check tasks, stated as a deviation.

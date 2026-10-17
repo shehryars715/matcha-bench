@@ -34,7 +34,7 @@ corpus is private and covers depression only. Here the same recipe is run on MAT
 
 | Step | What | Status |
 |---|---|---|
-| 1a | **Chinese MentalBERT on MATCHA.** Pre-train on MATCHA training users, fine-tune on the MATCHA tasks, and check the reproduction on the paper's own tasks. | Pre-training done; fine-tuning running |
+| 1a | **Chinese MentalBERT on MATCHA.** Pre-train on MATCHA training users, fine-tune on the MATCHA tasks, and check the reproduction on the paper's own tasks. | Done (results below) |
 | 1b | **LLM baseline** following [MentalGLM](https://github.com/zwzzzQAQ/MentalGLM) (Zhai et al.): LoRA instruction tuning of a ~9B Chinese LLM on the MATCHA tasks | Planned |
 | 2 | **A new method**, evaluated against the step-1 baselines | Planned |
 
@@ -114,6 +114,48 @@ Every number is reported as mean ± std over 3 seeds, with paired-bootstrap sign
 - `_masked` variants replace disorder names, community nicknames and 60+ psychiatric drug names
   with placeholders (`某病`, `某药`). Comparing `matcha_disorder_post` with its masked twin shows how
   much of a score comes from spotting those words.
+
+## Results (stage 1)
+
+Test scores, mean ± std over 3 seeds (seeds 42–44). The full tables are written to `outputs/results/`
+(`summary_f1.csv`, `all_runs.csv`, one `significance_*.csv` per comparison).
+
+**MATCHA baselines** (macro-F1):
+
+| Model | `disorder_post` | `disorder_post_masked` | `user_binary_masked` | `user_multiclass_masked` |
+|---|---|---|---|---|
+| `tfidf-lr` | 48.8 | 39.6 | 90.1 | 41.7 |
+| `bert-wwm-ext` | 51.6 ± 0.8 | 42.3 ± 1.5 | 91.6 ± 0.6 | 49.3 ± 1.5 |
+| `chinese-mentalbert` | 51.6 ± 3.3 | 43.7 ± 2.0 | 90.5 ± 0.9 | 50.3 ± 1.0 |
+| `matcha-random` | 51.5 ± 2.6 | **45.2 ± 1.9** | 91.5 ± 1.0 | 51.5 ± 1.0 |
+| `matcha-depression` | 51.3 ± 2.1 | 44.9 ± 1.9 | **92.1 ± 0.7** | **52.3 ± 0.4** |
+
+- **Pre-training on MATCHA helps where names are hidden.** `matcha-random` beats `bert-wwm-ext` by
+  2.9 points on `disorder_post_masked` and 2.2 on `user_multiclass_masked` (significant for 2 of 3
+  seeds on each; paired bootstrap, p < 0.05). With names visible, all BERT models tie.
+- **Lexicon-guided masking adds nothing measurable.** `matcha-depression` vs `matcha-random` is
+  within 1 point on every task and significant for none of the 12 task × seed pairs.
+- **Much of the unmasked score is keyword spotting.** Hiding disorder and drug names costs 6–9
+  points on `disorder_post` for every model. Schizophrenia (F1 40 → 20) and OCD (52 → 39) lose the most.
+- **Bipolar disorder and schizophrenia are the hardest classes** (per-class F1 about 20 on
+  `disorder_post_masked`, 44 and 20 on `user_multiclass_masked`).
+- `user_binary_masked` is close to saturated: TF-IDF already reaches 90.1.
+
+**Sanity check on the Chinese MentalBERT tasks** (F1; Cognitive is micro-F1, EWECT macro-F1):
+
+| Model | Suicide | Cognitive | Waimai | EWECT-epidemic |
+|---|---|---|---|---|
+| `tfidf-lr` | 75.4 | 63.1 | 82.9 | 59.8 |
+| `bert-base-chinese` | 79.8 | 71.9 | 84.5 | 65.2 |
+| `bert-wwm-ext` | 80.6 | 73.7 | 84.8 | 65.9 |
+| `chinese-mentalbert` | 81.5 | 73.9 | 85.5 | 65.9 |
+| `matcha-random` | 81.6 | 74.3 | 84.2 | 65.8 |
+| `matcha-depression` | 81.9 | 74.6 | 84.4 | 67.1 |
+| `matcha-multidisorder` | 80.6 | 73.6 | 84.7 | 66.7 |
+
+The released Chinese MentalBERT scores 81.5 / 73.9 here, against 81.30 / 74.91 reported in the
+MentalGLM paper on slightly different splits, so the fine-tuning setup reproduces. EWECT-usual was
+stopped after 7 of 18 runs (`bert-wwm-ext` 75.5, `matcha-random` 76.0, `matcha-depression` 76.3 on one seed).
 
 ## Quick start
 

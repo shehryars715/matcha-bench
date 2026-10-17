@@ -89,3 +89,15 @@ def test_llm_stage_runs_its_own_script_and_prepares_once(pipeline, monkeypatch):
     assert len(prepared) == 1 and prepared[0][1:] == llm["prepare"]
     assert len(calls) == 2
     assert all(c == {"script": "scripts/run_llm_finetune.py", "config": llm["config"], "deadline": deadline} for c in calls)
+
+
+def test_a_long_run_that_does_not_fit_lets_shorter_runs_go_first(pipeline):
+    rp, stage, events, launched = pipeline
+    st = stage(["a"])
+    task_root = Path(yaml.safe_load(open(st["config"], encoding="utf-8"))["task_root"])
+    (task_root / "t2").mkdir()
+    (task_root / "t2" / "meta.json").write_text("{}", encoding="utf-8")
+    st.update(tasks=["t1", "t2"], minutes_per_run={"t1": 120, "t2": 10})
+    assert rp.stage_finetune(st, deadline=time.time() + 60 * 60) is False  # 60 min: t1 never fits
+    assert sorted((t, s) for t, _, s, *_ in launched) == [("t2", 1), ("t2", 2)]
+    assert events[-1] == {"stage": "finetune-test", "status": "paused (time)", "next": "t1/a/seed1"}

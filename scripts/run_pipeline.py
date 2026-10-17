@@ -157,17 +157,22 @@ def stage_finetune(stage, deadline) -> bool:
         for i, device in enumerate(slots):
             if i in running or not queue or paused:
                 continue
-            task, model, seed = queue[0]
-            if minutes_left(deadline) < reserve.get(task, reserve.get("default", 20)):
+            # the first queued run that still fits; a long run waiting for the next session does not
+            # block shorter ones behind it
+            fits = [job for job in queue if minutes_left(deadline) >= reserve.get(job[0], reserve.get("default", 20))]
+            if not fits:
+                task, model, seed = queue[0]
                 log_event(stage=stage["name"], status="paused (time)", next=f"{task}/{model}/seed{seed}")
                 paused = True
                 break
+            task, model, seed = job = fits[0]
             if extra and stage.get("prepare") and not prepared:  # e.g. download/convert the LLM once
                 if run([PY, *stage["prepare"]]) != 0:
                     log_event(stage=stage["name"], status="prepare failed")
                     return False
                 prepared = True
-            running[i] = (queue.pop(0), *start_finetune(task, model, seed, device, **extra))
+            queue.remove(job)
+            running[i] = (job, *start_finetune(task, model, seed, device, **extra))
         time.sleep(POLL_SECONDS if running else 0)
         for i in [i for i, (_, proc, _) in running.items() if proc.poll() is not None]:
             (task, model, seed), proc, log_file = running.pop(i)

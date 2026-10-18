@@ -16,6 +16,7 @@ The loss is computed from the decoder's hidden states at the answer positions on
 
 from __future__ import annotations
 
+import gc
 import json
 import math
 import shutil
@@ -101,13 +102,26 @@ def _evaluate(model, tokenizer, prompt, df, meta, hp):
 
 
 def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str, output_root: Path,
-                     seed: int, hp: dict, deadline: float | None = None, probe_steps: int | None = None) -> dict | None:
+                     seed: int, hp: dict, deadline: float | None = None, probe_steps: int | None = None,
+                     recovered_history: list[float] | None = None) -> dict | None:
     """Train one (task, model, seed). With `probe_steps`, only time that many optimizer steps
-    plus a small generation pass, and write probe.json instead of results."""
+    plus a small generation pass, and write probe.json instead of results.
+
+    When training has finished but the test pass has not (train_state.json says so, or
+    `recovered_history` lists the per-epoch dev F1 of a run whose state file predates it), the
+    saved best adapter is loaded and only the test pass runs."""
     out_dir = Path(output_root) / task / model_tag / f"seed{seed}"
     if probe_steps is None and (out_dir / "metrics.json").exists():
         log.info("Skipping %s / %s / seed %d (already done)", task, model_tag, seed)
         return None
+    best_dir, state_path = out_dir / "best_adapter", out_dir / "train_state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else None
+    if state is None and recovered_history and (best_dir / "adapter_model.safetensors").exists():
+        best_i = int(np.argmax(recovered_history))
+        state = {"trained": True, "best_epoch": best_i + 1, "train_runtime": None, "recovered": True,
+                 "history": [{"epoch": i + 1, "dev_f1": f} for i, f in enumerate(recovered_history)]}
+        save_json(state, state_path)
+    resume = probe_steps is None and bool(state and state.get("trained"))
     t_start = time.time()
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()  # peak_gpu_gb is per run
@@ -117,6 +131,13 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
     train_df, _ = _split(splits, meta, "train", hp.get("train_subset"), hp["subset_seed"])
     dev_df, _ = _split(splits, meta, "dev", hp.get("dev_subset"), hp["subset_seed"])
     test_df, test_idx = _split(splits, meta, "test", hp.get("test_subset"), hp["subset_seed"])
+
+    if resume:
+        log.info("%s / %s / seed %d: training finished earlier; test pass only, with %s", task, model_tag, seed,
+                 best_dir)
+        model, tokenizer = load_model(model_path, hp["quant"], lora_path=str(best_dir))
+        return _test_and_save(model, tokenizer, prompt, meta, splits, train_df, dev_df, test_df, test_idx, hp,
+                              out_dir, task, model_tag, model_path, seed, state, t_start, trainable=None)
 
     model, tokenizer = load_model(model_path, hp["quant"])
     model = add_lora(model, hp)
@@ -140,7 +161,6 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
     pad = tokenizer.pad_token_id
 
     history, best, best_epoch, bad_epochs, step = [], -1.0, None, 0, 0
-    best_dir = out_dir / "best_adapter"
     t_train = time.time()
     for epoch in range(1, (1 if probe_steps else hp["epochs"]) + 1):
         model.train()
@@ -205,6 +225,19 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
         from peft import set_peft_model_state_dict
         from safetensors.torch import load_file
         set_peft_model_state_dict(model, load_file(str(best_dir / "adapter_model.safetensors")))
+    state = {"trained": True, "best_epoch": best_epoch, "history": history,
+             "train_runtime": round(time.time() - t_train, 1)}
+    save_json(state, state_path)  # a crash in the test pass now only repeats the test pass
+    del optim, sched, scaler, params  # free the optimizer state before generating
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return _test_and_save(model, tokenizer, prompt, meta, splits, train_df, dev_df, test_df, test_idx, hp,
+                          out_dir, task, model_tag, model_path, seed, state, t_start, trainable=trainable)
+
+
+def _test_and_save(model, tokenizer, prompt, meta, splits, train_df, dev_df, test_df, test_idx, hp, out_dir,
+                   task, model_tag, model_path, seed, state, t_start, trainable) -> dict:
     test = _evaluate(model, tokenizer, prompt, test_df, meta, hp)
     out_dir.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(out_dir / "test_predictions.npz", preds=test["preds"], labels=test["labels"],
@@ -218,14 +251,15 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
         "hyperparameters": hp, "trainable_parameters": trainable,
         "n_train": len(train_df), "n_dev": len(dev_df), "n_test": len(test_df), "n_test_full": len(splits["test"]),
         "test_subset": len(test_df) < len(splits["test"]),
-        "best_epoch": best_epoch, "history": history, "train_runtime": round(time.time() - t_train, 1),
+        "best_epoch": state["best_epoch"], "history": state["history"], "train_runtime": state.get("train_runtime"),
+        "test_pass_resumed": bool(state.get("recovered")) or trainable is None,
         "minutes_total": round((time.time() - t_start) / 60, 1),
-        "effective_batch_size": bs * accum, "n_gpu": 1,
+        "effective_batch_size": hp["batch_size"] * hp["grad_accum"], "n_gpu": 1,
         "test": test["metrics"],
     }
     save_json(record, out_dir / "metrics.json")
     if not hp.get("keep_adapter", True):
-        shutil.rmtree(best_dir, ignore_errors=True)
+        shutil.rmtree(out_dir / "best_adapter", ignore_errors=True)
     log.info("%s | %s | seed %d | test %s-F1 = %.4f (unparsed %d)", task, model_tag, seed, meta["average"],
              test["metrics"]["f1"], test["metrics"]["unparsed"])
     return record

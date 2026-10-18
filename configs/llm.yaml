@@ -54,6 +54,13 @@ defaults:
   test_subset: null                      # null = the full test set
   keep_adapter: true
 
+# Runs whose training finished but whose test pass ran out of GPU memory (session 7, before
+# train_state.json existed): dev macro-F1 per epoch, from their logs. Their best adapters are saved,
+# so only the test pass is repeated. Newer runs record this themselves in train_state.json.
+finished_training:
+  matcha_user_binary_masked/mentalglm-chat/seed42: [0.8487, 0.8599]
+  matcha_user_multiclass_masked/mentalglm-chat/seed42: [0.4990, 0.5583]
+
 task_overrides:
   # Inputs as the BERT baselines saw them: posts cut at 128 characters, user timelines at 512.
   # The two post-level tasks have 20,000 test posts; a fixed stratified 2,000 keeps a run short,

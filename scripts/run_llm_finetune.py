@@ -45,8 +45,9 @@ def main():
             hp = {**cfg["defaults"], **(cfg.get("task_overrides") or {}).get(task, {})}
             seeds = args.seeds or cfg["seeds"]
             for seed in seeds[:1] if args.probe_steps else seeds:  # timing does not depend on the seed
+                recovered = (cfg.get("finished_training") or {}).get(f"{task}/{tag}/seed{seed}")
                 run_llm_finetune(task_root, task, path, tag, resolve_path(cfg["output_root"]), seed, hp,
-                                 deadline=deadline, probe_steps=args.probe_steps)
+                                 deadline=deadline, probe_steps=args.probe_steps, recovered_history=recovered)
                 gc.collect()  # free the previous run's 9B model before loading the next one
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()

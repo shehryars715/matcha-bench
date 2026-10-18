@@ -97,8 +97,9 @@ def generate_answers(model, tokenizer, prompt_ids: list[list[int]], batch_size: 
     answers: list[str] = [""] * len(prompt_ids)
     pad = tokenizer.pad_token_id
     device = next(model.parameters()).device
-    for start in range(0, len(order), batch_size):
-        idx = order[start:start + batch_size]
+    cuda = device.type == "cuda"
+
+    def run(idx):
         width = max(len(prompt_ids[i]) for i in idx)
         ids = torch.full((len(idx), width), pad, dtype=torch.long)
         mask = torch.zeros((len(idx), width), dtype=torch.long)
@@ -106,12 +107,28 @@ def generate_answers(model, tokenizer, prompt_ids: list[list[int]], batch_size: 
             seq = prompt_ids[i]
             ids[row, width - len(seq):] = torch.tensor(seq)
             mask[row, width - len(seq):] = 1
-        out = model.generate(
-            input_ids=ids.to(device), attention_mask=mask.to(device), max_new_tokens=max_new_tokens,
-            do_sample=False, pad_token_id=pad,
-            stopping_criteria=StoppingCriteriaList([_StopAtPeriod(tokenizer, width)]))
+        # fp16 autocast as in training: LoRA adapters are kept in fp32 and would otherwise double
+        # the activation memory of every adapted layer
+        with torch.autocast("cuda", dtype=torch.float16, enabled=cuda):
+            out = model.generate(
+                input_ids=ids.to(device), attention_mask=mask.to(device), max_new_tokens=max_new_tokens,
+                do_sample=False, pad_token_id=pad,
+                stopping_criteria=StoppingCriteriaList([_StopAtPeriod(tokenizer, width)]))
         for row, i in enumerate(idx):
             answers[i] = tokenizer.decode(out[row, width:], skip_special_tokens=True)
+
+    pending = [order[s:s + batch_size] for s in range(0, len(order), batch_size)]
+    while pending:
+        idx = pending.pop(0)
+        try:
+            run(idx)
+        except torch.OutOfMemoryError:
+            if len(idx) == 1:
+                raise
+            torch.cuda.empty_cache()  # long inputs: retry this batch in two halves
+            log.warning("out of GPU memory on a batch of %d; retrying in halves", len(idx))
+            half = len(idx) // 2
+            pending[:0] = [idx[:half], idx[half:]]
     return answers
 
 

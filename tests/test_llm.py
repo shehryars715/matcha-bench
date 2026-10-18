@@ -111,3 +111,35 @@ def test_answer_only_loss_equals_the_full_causal_lm_loss():
         full = model(input_ids=ids, attention_mask=mask, labels=labels).loss
         ours = answer_loss(model, ids, mask, labels)
     assert ours.item() == pytest.approx(full.item(), rel=1e-5)
+
+
+def test_generation_halves_a_batch_that_runs_out_of_memory():
+    from matcha_bench.llm.infer import generate_answers
+
+    class Tok:
+        pad_token_id = 0
+
+        def batch_decode(self, rows, skip_special_tokens=False):
+            return ["。"] * len(rows)
+
+        def decode(self, ids, skip_special_tokens=True):
+            return f"answer {int(ids[0])}"
+
+    class Model(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.w = torch.nn.Parameter(torch.zeros(1))
+            self.sizes = []
+
+        def generate(self, input_ids, attention_mask, **kw):
+            self.sizes.append(len(input_ids))
+            if len(input_ids) > 2:
+                raise torch.OutOfMemoryError("fake")
+            first = input_ids[:, -1:]  # echo each prompt's last token as the "answer"
+            return torch.cat([input_ids, first], dim=1)
+
+    model = Model()
+    prompts = [[1, 2, i] for i in range(10, 17)]  # 7 prompts, batch 4 -> halves of 2
+    answers = generate_answers(model, Tok(), prompts, batch_size=4)
+    assert answers == [f"answer {i}" for i in range(10, 17)]  # every item answered, in order
+    assert max(s for s in model.sizes if s <= 2) == 2 and 4 in model.sizes

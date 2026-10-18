@@ -63,9 +63,10 @@ finished_training:
 
 task_overrides:
   # Inputs as the BERT baselines saw them: posts cut at 128 characters, user timelines at 512.
-  # The two post-level tasks have 20,000 test posts; a fixed stratified 2,000 keeps a run short,
-  # and the BERT runs are re-scored on the same posts from their saved predictions.
-  matcha_disorder_post: {max_text_chars: 128, test_subset: 2000}
-  matcha_disorder_post_masked: {max_text_chars: 128, test_subset: 2000}
+  # The two post-level tasks have 20,000 test posts. Sessions 7-8 tested on a fixed stratified
+  # 2,000 to keep runs short; session 9 re-tests the saved adapters on all 20,000 (the 2,000-post
+  # results are kept in each run's test_subset2000/).
+  matcha_disorder_post: {max_text_chars: 128}
+  matcha_disorder_post_masked: {max_text_chars: 128}
   matcha_user_binary_masked: {max_text_chars: 512}
   matcha_user_multiclass_masked: {max_text_chars: 512}

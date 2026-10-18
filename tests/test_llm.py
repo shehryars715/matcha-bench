@@ -143,3 +143,26 @@ def test_generation_halves_a_batch_that_runs_out_of_memory():
     answers = generate_answers(model, Tok(), prompts, batch_size=4)
     assert answers == [f"answer {i}" for i in range(10, 17)]  # every item answered, in order
     assert max(s for s in model.sizes if s <= 2) == 2 and 4 in model.sizes
+
+
+def test_a_smaller_test_is_archived_and_training_state_kept(tmp_path):
+    import json
+
+    from matcha_bench.llm.train import archive_smaller_test
+
+    run = tmp_path / "seed42"
+    (run / "best_adapter").mkdir(parents=True)
+    (run / "best_adapter" / "adapter_model.safetensors").write_bytes(b"x")
+    history = [{"epoch": 1, "dev_f1": 0.58}, {"epoch": 2, "dev_f1": 0.52}]
+    (run / "metrics.json").write_text(json.dumps({"n_test": 2000, "best_epoch": 1, "history": history}))
+    (run / "test_predictions.npz").write_bytes(b"p")
+
+    assert archive_smaller_test(run, 20000) is True
+    assert not (run / "metrics.json").exists()
+    assert (run / "test_subset2000" / "metrics.json").exists()
+    assert (run / "test_subset2000" / "test_predictions.npz").exists()
+    state = json.loads((run / "train_state.json").read_text())
+    assert state["trained"] and state["best_epoch"] == 1 and state["history"] == history
+
+    (run / "metrics.json").write_text(json.dumps({"n_test": 20000, "best_epoch": 1, "history": history}))
+    assert archive_smaller_test(run, 20000) is False  # already full: left alone

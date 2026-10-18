@@ -35,6 +35,9 @@ stages:
     script: scripts/run_llm_finetune.py
     config: configs/llm.yaml
     prepare: [scripts/run_llm_finetune.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, --prepare-only]
+    # Runs tested on fewer items than configs/llm.yaml now asks for (the 2,000-post subsets) are
+    # re-queued; they only repeat the test pass with their saved adapter (20,000 posts at 4.9/s ~70 min).
+    before: [scripts/run_llm_finetune.py, --tasks, all, --models, mentalglm-chat, --archive-smaller-tests]
     tasks: [matcha_user_multiclass_masked, matcha_user_binary_masked, matcha_disorder_post, matcha_disorder_post_masked]
     models: [mentalglm-chat]
     minutes_per_run: {default: 95, matcha_user_multiclass_masked: 260, matcha_user_binary_masked: 155}

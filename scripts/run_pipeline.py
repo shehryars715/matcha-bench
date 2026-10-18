@@ -136,6 +136,9 @@ def stage_finetune(stage, deadline) -> bool:
     extra = {} if script == "scripts/run_finetune.py" else {"script": script, "config": stage["config"],
                                                              "deadline": deadline}
     reserve = stage.get("minutes_per_run", {})
+    if stage.get("before") and run([PY, *stage["before"]]) != 0:  # e.g. mark runs to re-test
+        log_event(stage=stage["name"], status="before failed")
+        return False
     completed_all = True
     queue = []
     for task in stage["tasks"]:

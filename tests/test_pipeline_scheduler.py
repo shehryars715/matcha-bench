@@ -101,3 +101,18 @@ def test_a_long_run_that_does_not_fit_lets_shorter_runs_go_first(pipeline):
     assert rp.stage_finetune(st, deadline=time.time() + 60 * 60) is False  # 60 min: t1 never fits
     assert sorted((t, s) for t, _, s, *_ in launched) == [("t2", 1), ("t2", 2)]
     assert events[-1] == {"stage": "finetune-test", "status": "paused (time)", "next": "t1/a/seed1"}
+
+
+def test_before_command_runs_ahead_of_the_queue(pipeline, monkeypatch, tmp_path):
+    rp, stage, events, launched = pipeline
+    done = tmp_path / "out" / "t1" / "a" / "seed1" / "metrics.json"
+    done.parent.mkdir(parents=True)
+    done.write_text("{}", encoding="utf-8")
+
+    def fake_run(cmd):  # stands in for --archive-smaller-tests: seed1 becomes unfinished again
+        done.unlink()
+        return 0
+
+    monkeypatch.setattr(rp, "run", fake_run)
+    assert rp.stage_finetune(dict(stage(["a"]), before=["x.py"]), deadline=time.time() + 3600) is True
+    assert sorted(seed for _, _, seed, *_ in launched) == [1, 2]

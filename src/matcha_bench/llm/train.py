@@ -101,6 +101,40 @@ def _evaluate(model, tokenizer, prompt, df, meta, hp):
         model.config.use_cache = False
 
 
+def planned_test_size(task_root: Path, task: str, hp: dict) -> int:
+    meta, splits = load_task(task_root, task)
+    return len(_split(splits, meta, "test", hp.get("test_subset"), hp["subset_seed"])[1])
+
+
+def archive_smaller_test(out_dir: Path, n_planned: int) -> bool:
+    """Move a finished run's test results aside when they cover fewer test items than now planned
+    (e.g. a 2,000-post subset before the full test set was wanted), so the run counts as unfinished
+    and its saved best adapter is re-tested. Writes train_state.json from metrics.json if the run
+    predates that file. Returns True if it archived anything."""
+    out_dir = Path(out_dir)
+    metrics_path = out_dir / "metrics.json"
+    if not metrics_path.exists():
+        return False
+    m = json.loads(metrics_path.read_text(encoding="utf-8"))
+    if m["n_test"] >= n_planned:
+        return False
+    if not (out_dir / "best_adapter" / "adapter_model.safetensors").exists():
+        log.warning("%s: test covers %d of %d items but no saved adapter; left as is", out_dir, m["n_test"], n_planned)
+        return False
+    state_path = out_dir / "train_state.json"
+    if not state_path.exists():
+        save_json({"trained": True, "best_epoch": m["best_epoch"], "history": m["history"],
+                   "train_runtime": m.get("train_runtime")}, state_path)
+    archive = out_dir / f"test_subset{m['n_test']}"
+    archive.mkdir(exist_ok=True)
+    for name in ("test_predictions.npz", "test_answers.jsonl", "metrics.json"):  # metrics.json last
+        if (out_dir / name).exists():
+            shutil.move(str(out_dir / name), str(archive / name))
+    log.info("%s: archived the %d-item test to %s; the best adapter will be re-tested on %d items",
+             out_dir, m["n_test"], archive.name, n_planned)
+    return True
+
+
 def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str, output_root: Path,
                      seed: int, hp: dict, deadline: float | None = None, probe_steps: int | None = None,
                      recovered_history: list[float] | None = None) -> dict | None:
@@ -253,6 +287,7 @@ def _test_and_save(model, tokenizer, prompt, meta, splits, train_df, dev_df, tes
         "test_subset": len(test_df) < len(splits["test"]),
         "best_epoch": state["best_epoch"], "history": state["history"], "train_runtime": state.get("train_runtime"),
         "test_pass_resumed": bool(state.get("recovered")) or trainable is None,
+        "earlier_tests": sorted(p.name for p in out_dir.glob("test_subset*") if p.is_dir()),
         "minutes_total": round((time.time() - t_start) / 60, 1),
         "effective_batch_size": hp["batch_size"] * hp["grad_accum"], "n_gpu": 1,
         "test": test["metrics"],

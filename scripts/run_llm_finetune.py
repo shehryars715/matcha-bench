@@ -4,7 +4,9 @@
     python scripts/run_llm_finetune.py --tasks all --models mentalglm-chat --seeds 42
     python scripts/run_llm_finetune.py --tasks matcha_user_binary_masked --models mentalglm-chat --probe-steps 6
 
-Finished runs (metrics.json present) are skipped. `--probe-steps N` only times N optimizer steps
+Finished runs (metrics.json present) are skipped. `--archive-smaller-tests` moves aside the test
+results of finished runs that cover fewer test items than the config now asks for (into
+test_subset<n>/), so the next call re-tests their saved best adapter without retraining. `--probe-steps N` only times N optimizer steps
 and a small generation pass, writing outputs/llm/finetune/_probe/<task>__<model>.json, to plan
 GPU time. Same command-line shape as scripts/run_finetune.py, so the pipeline can run either.
 """
@@ -18,7 +20,7 @@ import torch
 import _bootstrap  # noqa: F401
 from matcha_bench.config import load_config, resolve_path
 from matcha_bench.llm.convert import ensure_converted
-from matcha_bench.llm.train import run_llm_finetune
+from matcha_bench.llm.train import archive_smaller_test, planned_test_size, run_llm_finetune
 
 
 def main():
@@ -29,12 +31,23 @@ def main():
     ap.add_argument("--seeds", nargs="*", type=int)
     ap.add_argument("--probe-steps", type=int)
     ap.add_argument("--prepare-only", action="store_true", help="download and convert the models, then stop")
+    ap.add_argument("--archive-smaller-tests", action="store_true",
+                    help="move aside finished runs tested on fewer items than now planned, then stop")
     ap.add_argument("--set", nargs="*", default=[], help="e.g. defaults.epochs=1")
     args = ap.parse_args()
     cfg = load_config(resolve_path(args.config), args.set)
     task_root = resolve_path(cfg["task_root"])
     tasks = sorted(cfg["task_overrides"]) if args.tasks == ["all"] else args.tasks
     deadline = float(os.environ["PIPELINE_DEADLINE"]) if os.environ.get("PIPELINE_DEADLINE") else None
+
+    if args.archive_smaller_tests:  # cheap (no model needed); the runs are then re-tested as usual
+        for task in tasks:
+            hp = {**cfg["defaults"], **(cfg.get("task_overrides") or {}).get(task, {})}
+            n = planned_test_size(task_root, task, hp)
+            for tag in args.models:
+                for seed in args.seeds or cfg["seeds"]:
+                    archive_smaller_test(resolve_path(cfg["output_root"]) / task / tag / f"seed{seed}", n)
+        return
 
     for tag in args.models:
         path = ensure_converted(str(cfg["models"].get(tag, tag)), resolve_path(cfg["convert_dir"]),

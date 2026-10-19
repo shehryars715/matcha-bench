@@ -23,6 +23,12 @@ from matcha_bench.llm.convert import ensure_converted
 from matcha_bench.llm.train import archive_smaller_test, planned_test_size, run_llm_finetune
 
 
+def hparams(cfg: dict, task: str, tag: str) -> dict:
+    """defaults < task_overrides[task] < model_overrides[tag] (e.g. a full-data variant of a model)."""
+    return {**cfg["defaults"], **(cfg.get("task_overrides") or {}).get(task, {}),
+            **(cfg.get("model_overrides") or {}).get(tag, {})}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default="configs/llm.yaml")
@@ -42,9 +48,8 @@ def main():
 
     if args.archive_smaller_tests:  # cheap (no model needed); the runs are then re-tested as usual
         for task in tasks:
-            hp = {**cfg["defaults"], **(cfg.get("task_overrides") or {}).get(task, {})}
-            n = planned_test_size(task_root, task, hp)
             for tag in args.models:
+                n = planned_test_size(task_root, task, hparams(cfg, task, tag))
                 for seed in args.seeds or cfg["seeds"]:
                     archive_smaller_test(resolve_path(cfg["output_root"]) / task / tag / f"seed{seed}", n)
         return
@@ -55,7 +60,7 @@ def main():
         if args.prepare_only:
             continue
         for task in tasks:
-            hp = {**cfg["defaults"], **(cfg.get("task_overrides") or {}).get(task, {})}
+            hp = hparams(cfg, task, tag)
             seeds = args.seeds or cfg["seeds"]
             for seed in seeds[:1] if args.probe_steps else seeds:  # timing does not depend on the seed
                 recovered = (cfg.get("finished_training") or {}).get(f"{task}/{tag}/seed{seed}")

@@ -116,3 +116,9 @@ def test_before_command_runs_ahead_of_the_queue(pipeline, monkeypatch, tmp_path)
     monkeypatch.setattr(rp, "run", fake_run)
     assert rp.stage_finetune(dict(stage(["a"]), before=["x.py"]), deadline=time.time() + 3600) is True
     assert sorted(seed for _, _, seed, *_ in launched) == [1, 2]
+
+
+def test_a_stage_can_run_fewer_seeds(pipeline):
+    rp, stage, events, launched = pipeline
+    assert rp.stage_finetune(dict(stage(["a"]), seeds=[2]), deadline=time.time() + 3600) is True
+    assert [seed for _, _, seed, *_ in launched] == [2]

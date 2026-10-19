@@ -149,7 +149,7 @@ def stage_finetune(stage, deadline) -> bool:
             if source.startswith("outputs/") and not resolve_path(source).exists():
                 completed_all = False  # its DAPT model is not trained yet
                 continue
-            for seed in ft["seeds"]:
+            for seed in stage.get("seeds", ft["seeds"]):  # a stage may run fewer seeds (e.g. a pilot)
                 if not (out_root / task / model / f"seed{seed}" / "metrics.json").exists():
                     queue.append((task, model, seed))
 

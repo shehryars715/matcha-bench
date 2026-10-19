@@ -166,3 +166,71 @@ def test_a_smaller_test_is_archived_and_training_state_kept(tmp_path):
 
     (run / "metrics.json").write_text(json.dumps({"n_test": 20000, "best_epoch": 1, "history": history}))
     assert archive_smaller_test(run, 20000) is False  # already full: left alone
+
+
+def test_training_resumes_from_the_epoch_save_point(tmp_path, monkeypatch):
+    """3 epochs straight == 1 epoch, session ends, then resume: same final adapter weights."""
+    import json
+
+    pytest.importorskip("peft")
+    from transformers import AutoTokenizer, GlmConfig, GlmForCausalLM
+
+    from matcha_bench.llm import train
+
+    try:
+        tok = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct", local_files_only=True)
+    except Exception:
+        pytest.skip("needs a cached chat tokenizer")
+    model_dir = tmp_path / "model"
+    torch.manual_seed(0)
+    GlmForCausalLM(GlmConfig(vocab_size=len(tok), hidden_size=16, intermediate_size=32, num_hidden_layers=1,
+                             num_attention_heads=2, num_key_value_heads=1, head_dim=8,
+                             pad_token_id=tok.pad_token_id)).save_pretrained(model_dir)
+    tok.save_pretrained(model_dir)
+
+    task = "matcha_user_binary_masked"
+    task_dir = tmp_path / "tasks" / task
+    task_dir.mkdir(parents=True)
+    (task_dir / "meta.json").write_text(json.dumps({"problem_type": "single_label_classification",
+                                                    "label_names": ["control", "disorder"], "average": "macro"}))
+    for split, n in [("train", 12), ("dev", 4), ("test", 4)]:
+        rows = [{"id": f"{split}{i}", "text": f"今天{i}天气", "label": i % 2} for i in range(n)]
+        (task_dir / f"{split}.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+    hp = {"quant": "fp32", "lora_rank": 4, "lora_alpha": 8, "lora_dropout": 0.0, "lora_target": None,
+          "learning_rate": 1e-2, "warmup_ratio": 0.01, "weight_decay": 0.0, "max_grad_norm": 1.0,
+          "batch_size": 2, "grad_accum": 2, "epochs": 3, "early_stopping_patience": None, "max_seq_len": 128,
+          "max_text_chars": 20, "max_new_tokens": 2, "eval_batch_size": 4, "subset_seed": 0,
+          "train_subset": None, "dev_subset": None, "test_subset": None, "keep_adapter": True}
+
+    finals = {}
+
+    def fake_test_and_save(model, *args, **kw):  # record the trained adapter instead of testing
+        out_dir = args[-7]
+        finals[out_dir.parents[2].name] = {k: v.detach().clone() for k, v in model.named_parameters()
+                                              if v.requires_grad}
+        assert not (out_dir / "checkpoint").exists()  # removed once training is over
+        return {}
+
+    monkeypatch.setattr(train, "_test_and_save", fake_test_and_save)
+    run = lambda root: train.run_llm_finetune(tmp_path / "tasks", task, str(model_dir), "m", tmp_path / root, 42, hp)
+    run("straight")
+
+    real_save = train._save_checkpoint
+
+    def save_then_stop(ckpt_dir, *a, **kw):  # the session ends right after epoch 1's save point
+        real_save(ckpt_dir, *a, **kw)
+        raise SystemExit("session over")
+
+    monkeypatch.setattr(train, "_save_checkpoint", save_then_stop)
+    with pytest.raises(SystemExit):
+        run("resumed")
+    assert (tmp_path / "resumed" / task / "m" / "seed42" / "checkpoint" / "state.pt").exists()
+    monkeypatch.setattr(train, "_save_checkpoint", real_save)
+    run("resumed")
+
+    a, b = finals["straight"], finals["resumed"]
+    assert a.keys() == b.keys() and len(a) > 0
+    assert all(torch.equal(a[k], b[k]) for k in a)
+    state = lambda root: json.loads((tmp_path / root / task / "m" / "seed42" / "train_state.json").read_text())
+    assert [h["epoch"] for h in state("resumed")["history"]] == [1, 2, 3]
+    assert [h["dev_f1"] for h in state("resumed")["history"]] == [h["dev_f1"] for h in state("straight")["history"]]

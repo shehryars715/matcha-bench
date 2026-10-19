@@ -10,6 +10,9 @@ Protocol, following MentalGLM's stage-2 training (LLaMA-Factory, LoRA) as far as
 * after every epoch the dev subset is labelled by generation and the best epoch is kept (the
   paper selects on the validation set); then the test set is labelled with the best adapter.
 
+After every epoch but the last, a save point (adapter, optimizer, scheduler, progress) is written to
+<run>/checkpoint/; a run stopped by the session cap resumes from it with the same data order.
+
 The loss is computed from the decoder's hidden states at the answer positions only: GLM-4's
 151,552-token vocabulary would otherwise need a full logits tensor (~2.5 GB at batch 4).
 """
@@ -80,6 +83,30 @@ def add_lora(model, hp):
         if p.requires_grad:
             p.data = p.data.float()
     return model
+
+
+def _save_checkpoint(ckpt_dir: Path, model, optim, sched, scaler, progress: dict) -> None:
+    """End-of-epoch save point: adapter, optimizer, scheduler, scaler and progress. Written to a
+    temporary folder first, so a session that dies mid-save keeps the previous save point."""
+    tmp = ckpt_dir.with_name(ckpt_dir.name + "_tmp")
+    shutil.rmtree(tmp, ignore_errors=True)
+    model.save_pretrained(tmp)
+    torch.save({"optim": optim.state_dict(), "sched": sched.state_dict(), "scaler": scaler.state_dict(),
+                **progress}, tmp / "state.pt")
+    shutil.rmtree(ckpt_dir, ignore_errors=True)
+    tmp.rename(ckpt_dir)
+
+
+def _load_checkpoint(ckpt_dir: Path, model, optim, sched, scaler) -> dict:
+    from peft import set_peft_model_state_dict
+    from safetensors.torch import load_file
+
+    set_peft_model_state_dict(model, load_file(str(ckpt_dir / "adapter_model.safetensors")))
+    state = torch.load(ckpt_dir / "state.pt", map_location="cpu", weights_only=False)
+    optim.load_state_dict(state.pop("optim"))  # moves the moments to the parameters' device
+    sched.load_state_dict(state.pop("sched"))
+    scaler.load_state_dict(state.pop("scaler"))
+    return state
 
 
 def _split(splits, meta, name, k, seed):
@@ -195,10 +222,20 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
     pad = tokenizer.pad_token_id
 
     history, best, best_epoch, bad_epochs, step = [], -1.0, None, 0, 0
+    ckpt_dir, done_epochs = out_dir / "checkpoint", 0
+    if probe_steps is None and (ckpt_dir / "state.pt").exists():  # a session ended mid-training
+        p = _load_checkpoint(ckpt_dir, model, optim, sched, scaler)
+        done_epochs, step, history = p["epoch"], p["step"], p["history"]
+        best, best_epoch, bad_epochs = p["best"], p["best_epoch"], p["bad_epochs"]
+        log.info("%s / %s / seed %d: resuming after epoch %d (step %d) from %s", task, model_tag, seed,
+                 done_epochs, step, ckpt_dir)
+    step_at_start = step
     t_train = time.time()
     for epoch in range(1, (1 if probe_steps else hp["epochs"]) + 1):
+        order = rng.permutation(len(examples))  # drawn for every epoch, so a resumed run sees the same order
+        if epoch <= done_epochs:
+            continue
         model.train()
-        order = rng.permutation(len(examples))
         batches = [order[i:i + bs] for i in range(0, len(order), bs)]
         running, n_loss = 0.0, 0
         for b, chunk in enumerate(batches):
@@ -219,7 +256,8 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
                 step += 1
                 if step % 10 == 0 or step == total_steps:
                     log.info("epoch %d step %d/%d loss %.4f lr %.2e (%.1f s/step)", epoch, step, total_steps,
-                             running / n_loss, sched.get_last_lr()[0], (time.time() - t_train) / step)
+                             running / n_loss, sched.get_last_lr()[0],
+                             (time.time() - t_train) / (step - step_at_start))
                     running, n_loss = 0.0, 0
                 if probe_steps and step >= probe_steps:
                     break
@@ -238,6 +276,10 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
             bad_epochs += 1
             if hp.get("early_stopping_patience") and bad_epochs >= hp["early_stopping_patience"]:
                 break
+        if epoch < hp["epochs"]:  # after the last epoch, train_state.json takes over
+            _save_checkpoint(ckpt_dir, model, optim, sched, scaler,
+                             {"epoch": epoch, "step": step, "history": history, "best": best,
+                              "best_epoch": best_epoch, "bad_epochs": bad_epochs})
 
     if probe_steps:
         sec_per_step = (time.time() - t_train) / max(step, 1)
@@ -262,6 +304,7 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
     state = {"trained": True, "best_epoch": best_epoch, "history": history,
              "train_runtime": round(time.time() - t_train, 1)}
     save_json(state, state_path)  # a crash in the test pass now only repeats the test pass
+    shutil.rmtree(ckpt_dir, ignore_errors=True)  # the save point is no longer needed
     del optim, sched, scaler, params  # free the optimizer state before generating
     gc.collect()
     if torch.cuda.is_available():

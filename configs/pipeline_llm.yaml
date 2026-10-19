@@ -41,3 +41,19 @@ stages:
     tasks: [matcha_user_multiclass_masked, matcha_user_binary_masked, matcha_disorder_post, matcha_disorder_post_masked]
     models: [mentalglm-chat]
     minutes_per_run: {default: 95, matcha_user_multiclass_masked: 260, matcha_user_binary_masked: 155}
+  # Pilot (2026-10-19): does the 4,000-example training cap cost score? Seed 42 on all training data
+  # (23,109 posts, 6,919 users), everything else unchanged, against the capped seed-42 runs. Decision
+  # rule fixed in advance: full-data training for the other tasks only if the gain is significant
+  # (paired bootstrap, same seed and test set) and larger than the seed-to-seed spread.
+  # Estimates: disorder_post ~2 x 3.3 h training + 70 min test ~ 8 h; user_multiclass ~2 x 3 h + 21 min
+  # ~ 6.5 h. One run per GPU, side by side. Training saves a resume point after each epoch, so a run cut
+  # off by the session cap continues next session; a run starts once at least one epoch (~200 min) fits.
+  - name: finetune-llm-pilot
+    type: finetune
+    script: scripts/run_llm_finetune.py
+    config: configs/llm.yaml
+    prepare: [scripts/run_llm_finetune.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, --prepare-only]
+    tasks: [matcha_disorder_post, matcha_user_multiclass_masked]
+    models: [mentalglm-chat-fulldata]
+    seeds: [42]
+    minutes_per_run: {default: 200}

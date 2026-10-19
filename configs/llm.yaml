@@ -15,6 +15,13 @@ models:
   mentalglm-chat: zwzzz/MentalGLM-chat
   mentalglm: zwzzz/MentalGLM
   glm-4-9b-chat: zai-org/glm-4-9b-chat   # optional control: same recipe, no mental-health tuning
+  # Training-data pilot: the same model and recipe, but every training example instead of 4,000
+  # (model_overrides below). Compared with mentalglm-chat seed 42 on the same test set.
+  mentalglm-chat-fulldata: zwzzz/MentalGLM-chat
+
+# Settings that differ for one model tag (applied after defaults and task_overrides).
+model_overrides:
+  mentalglm-chat-fulldata: {train_subset: null}
 
 sanity:
   output_root: outputs/llm/sanity

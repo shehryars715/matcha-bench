@@ -1,5 +1,5 @@
-# Final MentalGLM baseline, lane 1 (the main chain of sessions, run in parallel with lane 2):
-#   python scripts/kaggle_pipeline.py start --pipeline configs/pipeline_llm_full_1.yaml
+# Final MentalGLM baseline, lane 1 (its own chain of sessions on a third account, in parallel with lane 2):
+#   python scripts/kaggle_pipeline.py start --lane 1 --pipeline configs/pipeline_llm_full_1.yaml
 # Tag mentalglm-chat-full (configs/llm.yaml): all training data, best epoch on the full dev set.
 # Per run: disorder_post_masked ~10 h (see configs/pipeline_llm_full_2.yaml); user_multiclass_masked
 # 2 x (~3 h training + ~12 min dev check) + ~21 min test, about 7 h. Runs span sessions via save points.

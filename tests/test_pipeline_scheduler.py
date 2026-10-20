@@ -100,7 +100,9 @@ def test_a_long_run_that_does_not_fit_lets_shorter_runs_go_first(pipeline):
     st.update(tasks=["t1", "t2"], minutes_per_run={"t1": 120, "t2": 10})
     assert rp.stage_finetune(st, deadline=time.time() + 60 * 60) is False  # 60 min: t1 never fits
     assert sorted((t, s) for t, _, s, *_ in launched) == [("t2", 1), ("t2", 2)]
-    assert events[-1] == {"stage": "finetune-test", "status": "paused (time)", "next": "t1/a/seed1"}
+    # the pause can be logged before or after the last t2 run finishes, depending on timing
+    assert [e for e in events if "status" in e][-1] == {"stage": "finetune-test", "status": "paused (time)",
+                                                        "next": "t1/a/seed1"}
 
 
 def test_before_command_runs_ahead_of_the_queue(pipeline, monkeypatch, tmp_path):
@@ -122,3 +124,14 @@ def test_a_stage_can_run_fewer_seeds(pipeline):
     rp, stage, events, launched = pipeline
     assert rp.stage_finetune(dict(stage(["a"]), seeds=[2]), deadline=time.time() + 3600) is True
     assert [seed for _, _, seed, *_ in launched] == [2]
+
+
+def test_seeds_can_be_set_per_task(pipeline):
+    rp, stage, events, launched = pipeline
+    st = stage(["a"])
+    task_root = Path(yaml.safe_load(open(st["config"], encoding="utf-8"))["task_root"])
+    (task_root / "t2").mkdir()
+    (task_root / "t2" / "meta.json").write_text("{}", encoding="utf-8")
+    st.update(tasks=["t1", "t2"], seeds={"t2": [2], "default": [1, 2]})
+    assert rp.stage_finetune(st, deadline=time.time() + 3600) is True
+    assert sorted((t, s) for t, _, s, *_ in launched) == [("t1", 1), ("t1", 2), ("t2", 2)]

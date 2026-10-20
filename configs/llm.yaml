@@ -18,10 +18,16 @@ models:
   # Training-data pilot: the same model and recipe, but every training example instead of 4,000
   # (model_overrides below). Compared with mentalglm-chat seed 42 on the same test set.
   mentalglm-chat-fulldata: zwzzz/MentalGLM-chat
+  # The final MentalGLM baseline (2026-10-20, after the pilot): every training example, and the best
+  # epoch picked on the full dev set as in the paper (the 500-item sample held 1 ADHD post on
+  # disorder_post). user_binary_masked needs no rerun: its mentalglm-chat runs already used all
+  # 2,392 training users and the full 358-user dev set.
+  mentalglm-chat-full: zwzzz/MentalGLM-chat
 
 # Settings that differ for one model tag (applied after defaults and task_overrides).
 model_overrides:
   mentalglm-chat-fulldata: {train_subset: null}
+  mentalglm-chat-full: {train_subset: null, dev_subset: null}
 
 sanity:
   output_root: outputs/llm/sanity

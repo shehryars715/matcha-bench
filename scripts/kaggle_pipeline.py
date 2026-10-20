@@ -11,10 +11,15 @@
     # the dataset and the earlier sessions from the accounts that own them, which must share both
     python scripts/kaggle_pipeline.py account --token-file FILE --data-owner OLD_USERNAME
 
-Each session is a new Kaggle job (matcha-bench-run-001, -002, ...) with a hard time cap
+    # a second, independent chain of sessions (e.g. on another account, with its own share of the
+    # runs): every action takes --lane; its sessions are matcha-bench-<lane>-run-001, -002, ...
+    python scripts/kaggle_pipeline.py start --lane 2 --pipeline configs/pipeline_llm_full_2.yaml
+
+Each session (per lane) is a new Kaggle job (matcha-bench-run-001, -002, ...) with a hard time cap
 (configs/pipeline.yaml: budget_hours). It attaches the previous session's output, restores
 outputs/ (checkpoints, trained models, finished runs) and continues with scripts/run_pipeline.py,
-which stops cleanly before the cap. Session history is kept in outputs/kaggle/pipeline_state.json.
+which stops cleanly before the cap. Session history is kept in outputs/kaggle/pipeline_state.json
+(outputs/kaggle/pipeline_state_<lane>.json for a lane).
 """
 
 import argparse
@@ -151,7 +156,12 @@ def main():
     ap.add_argument("--budget-hours", type=float, help="start: session cap instead of the config's budget_hours")
     ap.add_argument("--token-file", help="account: file holding that account's Kaggle access token")
     ap.add_argument("--data-owner", help="account: Kaggle user that owns the matcha-bench-data dataset")
+    ap.add_argument("--lane", help="an independent chain of sessions with its own state and account")
     args = ap.parse_args()
+    if args.lane:
+        global STATE, RUN_PREFIX
+        STATE = STATE.with_name(f"pipeline_state_{args.lane}.json")
+        RUN_PREFIX = f"matcha-bench-{args.lane}-run-"
     token_file = load_state().get("token_file")
     if token_file and args.action != "account":
         os.environ["KAGGLE_API_TOKEN"] = token_file  # the kaggle CLI subprocesses inherit it

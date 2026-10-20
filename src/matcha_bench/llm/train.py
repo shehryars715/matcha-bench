@@ -10,8 +10,10 @@ Protocol, following MentalGLM's stage-2 training (LLaMA-Factory, LoRA) as far as
 * after every epoch the dev subset is labelled by generation and the best epoch is kept (the
   paper selects on the validation set); then the test set is labelled with the best adapter.
 
-After every epoch but the last, a save point (adapter, optimizer, scheduler, progress) is written to
-<run>/checkpoint/; a run stopped by the session cap resumes from it with the same data order.
+Save points (adapter, optimizer, scheduler, progress) are written to <run>/checkpoint/ after each
+epoch's training and again after its dev check; a run stopped by the session cap resumes from the
+last one with the same data order. Training, dev checks and the test pass all stop cleanly at the
+pipeline deadline (the test pass resumes from train_state.json).
 
 The loss is computed from the decoder's hidden states at the answer positions only: GLM-4's
 151,552-token vocabulary would otherwise need a full logits tensor (~2.5 GB at batch 4).
@@ -116,14 +118,14 @@ def _split(splits, meta, name, k, seed):
     return df.iloc[idx].reset_index(drop=True), idx
 
 
-def _evaluate(model, tokenizer, prompt, df, meta, hp):
+def _evaluate(model, tokenizer, prompt, df, meta, hp, deadline=None):
     model.eval()
     model.config.use_cache = True
     try:
         return evaluate_texts(model, tokenizer, prompt, df["text"].tolist(), df["label"].tolist(),
                               meta["label_names"], meta["average"], batch_size=hp["eval_batch_size"],
                               max_new_tokens=hp["max_new_tokens"], max_text_tokens=hp.get("max_text_tokens"),
-                              max_text_chars=hp.get("max_text_chars"))
+                              max_text_chars=hp.get("max_text_chars"), deadline=deadline)
     finally:
         model.config.use_cache = False
 
@@ -198,7 +200,8 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
                  best_dir)
         model, tokenizer = load_model(model_path, hp["quant"], lora_path=str(best_dir))
         return _test_and_save(model, tokenizer, prompt, meta, splits, train_df, dev_df, test_df, test_idx, hp,
-                              out_dir, task, model_tag, model_path, seed, state, t_start, trainable=None)
+                              out_dir, task, model_tag, model_path, seed, state, t_start, trainable=None,
+                              deadline=deadline)
 
     model, tokenizer = load_model(model_path, hp["quant"])
     model = add_lora(model, hp)
@@ -222,48 +225,57 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
     pad = tokenizer.pad_token_id
 
     history, best, best_epoch, bad_epochs, step = [], -1.0, None, 0, 0
-    ckpt_dir, done_epochs = out_dir / "checkpoint", 0
-    if probe_steps is None and (ckpt_dir / "state.pt").exists():  # a session ended mid-training
+    # trained = epochs whose training is done; evaluated = whether the last of them has its dev score
+    ckpt_dir, trained, evaluated = out_dir / "checkpoint", 0, True
+    if probe_steps is None and (ckpt_dir / "state.pt").exists():  # a session ended mid-run
         p = _load_checkpoint(ckpt_dir, model, optim, sched, scaler)
-        done_epochs, step, history = p["epoch"], p["step"], p["history"]
+        trained, evaluated, step, history = p["epoch"], p.get("evaluated", True), p["step"], p["history"]
         best, best_epoch, bad_epochs = p["best"], p["best_epoch"], p["bad_epochs"]
-        log.info("%s / %s / seed %d: resuming after epoch %d (step %d) from %s", task, model_tag, seed,
-                 done_epochs, step, ckpt_dir)
+        log.info("%s / %s / seed %d: resuming after epoch %d%s (step %d) from %s", task, model_tag, seed,
+                 trained, "" if evaluated else ", before its dev check", step, ckpt_dir)
+
+    def save_point(epoch, done_dev):
+        _save_checkpoint(ckpt_dir, model, optim, sched, scaler,
+                         {"epoch": epoch, "evaluated": done_dev, "step": step, "history": history,
+                          "best": best, "best_epoch": best_epoch, "bad_epochs": bad_epochs})
+
     step_at_start = step
     t_train = time.time()
     for epoch in range(1, (1 if probe_steps else hp["epochs"]) + 1):
         order = rng.permutation(len(examples))  # drawn for every epoch, so a resumed run sees the same order
-        if epoch <= done_epochs:
+        if epoch < trained or (epoch == trained and evaluated):
             continue
-        model.train()
-        batches = [order[i:i + bs] for i in range(0, len(order), bs)]
-        running, n_loss = 0.0, 0
-        for b, chunk in enumerate(batches):
-            if deadline and time.time() > deadline:
-                raise SystemExit(f"{task}/{model_tag}/seed{seed}: deadline reached during training; rerun next session")
-            ids, mask, labels = (t.to(device) for t in collate([examples[i] for i in chunk], pad))
-            with torch.autocast("cuda", dtype=torch.float16, enabled=torch.cuda.is_available()):
-                loss = answer_loss(model, ids, mask, labels)
-            scaler.scale(loss / accum).backward()
-            running, n_loss = running + loss.item(), n_loss + 1
-            if (b + 1) % accum == 0 or b + 1 == len(batches):
-                scaler.unscale_(optim)
-                torch.nn.utils.clip_grad_norm_(params, hp.get("max_grad_norm", 1.0))
-                scaler.step(optim)
-                scaler.update()
-                optim.zero_grad(set_to_none=True)
-                sched.step()
-                step += 1
-                if step % 10 == 0 or step == total_steps:
-                    log.info("epoch %d step %d/%d loss %.4f lr %.2e (%.1f s/step)", epoch, step, total_steps,
-                             running / n_loss, sched.get_last_lr()[0],
-                             (time.time() - t_train) / (step - step_at_start))
-                    running, n_loss = 0.0, 0
-                if probe_steps and step >= probe_steps:
-                    break
-        if probe_steps:
-            break
-        dev = _evaluate(model, tokenizer, prompt, dev_df, meta, hp)
+        if epoch > trained:  # otherwise trained in an earlier session, and only its dev check is left
+            model.train()
+            batches = [order[i:i + bs] for i in range(0, len(order), bs)]
+            running, n_loss = 0.0, 0
+            for b, chunk in enumerate(batches):
+                if deadline and time.time() > deadline:
+                    raise SystemExit(f"{task}/{model_tag}/seed{seed}: deadline reached during training; rerun next session")
+                ids, mask, labels = (t.to(device) for t in collate([examples[i] for i in chunk], pad))
+                with torch.autocast("cuda", dtype=torch.float16, enabled=torch.cuda.is_available()):
+                    loss = answer_loss(model, ids, mask, labels)
+                scaler.scale(loss / accum).backward()
+                running, n_loss = running + loss.item(), n_loss + 1
+                if (b + 1) % accum == 0 or b + 1 == len(batches):
+                    scaler.unscale_(optim)
+                    torch.nn.utils.clip_grad_norm_(params, hp.get("max_grad_norm", 1.0))
+                    scaler.step(optim)
+                    scaler.update()
+                    optim.zero_grad(set_to_none=True)
+                    sched.step()
+                    step += 1
+                    if step % 10 == 0 or step == total_steps:
+                        log.info("epoch %d step %d/%d loss %.4f lr %.2e (%.1f s/step)", epoch, step, total_steps,
+                                 running / n_loss, sched.get_last_lr()[0],
+                                 (time.time() - t_train) / (step - step_at_start))
+                        running, n_loss = 0.0, 0
+                    if probe_steps and step >= probe_steps:
+                        break
+            if probe_steps:
+                break
+            save_point(epoch, False)  # the dev check below can be cut off by the session cap
+        dev = _evaluate(model, tokenizer, prompt, dev_df, meta, hp, deadline=deadline)
         f1 = dev["metrics"]["f1"]
         history.append({"epoch": epoch, "dev_f1": f1, "dev_unparsed": dev["metrics"]["unparsed"],
                         "minutes": round((time.time() - t_start) / 60, 1)})
@@ -277,9 +289,7 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
             if hp.get("early_stopping_patience") and bad_epochs >= hp["early_stopping_patience"]:
                 break
         if epoch < hp["epochs"]:  # after the last epoch, train_state.json takes over
-            _save_checkpoint(ckpt_dir, model, optim, sched, scaler,
-                             {"epoch": epoch, "step": step, "history": history, "best": best,
-                              "best_epoch": best_epoch, "bad_epochs": bad_epochs})
+            save_point(epoch, True)
 
     if probe_steps:
         sec_per_step = (time.time() - t_train) / max(step, 1)
@@ -310,12 +320,13 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     return _test_and_save(model, tokenizer, prompt, meta, splits, train_df, dev_df, test_df, test_idx, hp,
-                          out_dir, task, model_tag, model_path, seed, state, t_start, trainable=trainable)
+                          out_dir, task, model_tag, model_path, seed, state, t_start, trainable=trainable,
+                          deadline=deadline)
 
 
 def _test_and_save(model, tokenizer, prompt, meta, splits, train_df, dev_df, test_df, test_idx, hp, out_dir,
-                   task, model_tag, model_path, seed, state, t_start, trainable) -> dict:
-    test = _evaluate(model, tokenizer, prompt, test_df, meta, hp)
+                   task, model_tag, model_path, seed, state, t_start, trainable, deadline=None) -> dict:
+    test = _evaluate(model, tokenizer, prompt, test_df, meta, hp, deadline=deadline)
     out_dir.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(out_dir / "test_predictions.npz", preds=test["preds"], labels=test["labels"],
                         indices=np.asarray(test_idx))

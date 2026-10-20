@@ -89,8 +89,9 @@ class _StopAtPeriod:
 
 @torch.no_grad()
 def generate_answers(model, tokenizer, prompt_ids: list[list[int]], batch_size: int = 8,
-                     max_new_tokens: int = 48) -> list[str]:
-    """Greedy answers for already-tokenised prompts, in input order."""
+                     max_new_tokens: int = 48, deadline: float | None = None) -> list[str]:
+    """Greedy answers for already-tokenised prompts, in input order. Past `deadline` (a time.time()
+    value) it stops between batches with SystemExit, so a session cap never cuts a batch off."""
     from transformers import StoppingCriteriaList
 
     order = sorted(range(len(prompt_ids)), key=lambda i: -len(prompt_ids[i]))
@@ -119,6 +120,8 @@ def generate_answers(model, tokenizer, prompt_ids: list[list[int]], batch_size: 
 
     pending = [order[s:s + batch_size] for s in range(0, len(order), batch_size)]
     while pending:
+        if deadline and time.time() > deadline:
+            raise SystemExit("deadline reached during generation; rerun next session")
         idx = pending.pop(0)
         try:
             run(idx)
@@ -134,11 +137,12 @@ def generate_answers(model, tokenizer, prompt_ids: list[list[int]], batch_size: 
 
 def evaluate_texts(model, tokenizer, prompt: TaskPrompt, texts: list[str], labels, label_names: list[str],
                    average: str, batch_size: int = 8, max_new_tokens: int = 48,
-                   max_text_tokens: int | None = None, max_text_chars: int | None = None) -> dict:
+                   max_text_tokens: int | None = None, max_text_chars: int | None = None,
+                   deadline: float | None = None) -> dict:
     """Generate, parse and score. Returns metrics plus per-item answers and predictions."""
     t0 = time.time()
     prompt_ids = [build_prompt_ids(tokenizer, prompt, t, max_text_tokens, max_text_chars) for t in texts]
-    answers = generate_answers(model, tokenizer, prompt_ids, batch_size, max_new_tokens)
+    answers = generate_answers(model, tokenizer, prompt_ids, batch_size, max_new_tokens, deadline=deadline)
     seconds = time.time() - t0
     parsed = [parse_answer(a, prompt) for a in answers]
     problem_type = MULTI if prompt.multi_label else "single_label_classification"

@@ -1,0 +1,25 @@
+# Final MentalGLM baseline, lane 1 (the main chain of sessions, run in parallel with lane 2):
+#   python scripts/kaggle_pipeline.py start --pipeline configs/pipeline_llm_full_1.yaml
+# Tag mentalglm-chat-full (configs/llm.yaml): all training data, best epoch on the full dev set.
+# Per run: disorder_post_masked ~10 h (see configs/pipeline_llm_full_2.yaml); user_multiclass_masked
+# 2 x (~3 h training + ~12 min dev check) + ~21 min test, about 7 h. Runs span sessions via save points.
+# This lane: disorder_post_masked seed 44 and user_multiclass_masked seeds 42-44 (~34 GPU-h, ~17 h
+# of sessions). Lane 2 runs disorder_post (3 seeds) and disorder_post_masked seeds 42 and 43.
+budget_hours: 9.0
+safety_margin_minutes: 30
+finetune_one_run_per_gpu: true   # one 4-bit LoRA run per T4
+
+stages:
+  - name: llm-packages
+    type: pip
+    packages: ["peft>=0.13", "bitsandbytes>=0.45", "transformers>=4.46"]
+  # A run starts only if one epoch and its dev check still fit in the session.
+  - name: finetune-llm-full
+    type: finetune
+    script: scripts/run_llm_finetune.py
+    config: configs/llm.yaml
+    prepare: [scripts/run_llm_finetune.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, --prepare-only]
+    tasks: [matcha_disorder_post_masked, matcha_user_multiclass_masked]
+    models: [mentalglm-chat-full]
+    seeds: {matcha_disorder_post_masked: [44], default: [42, 43, 44]}
+    minutes_per_run: {default: 200, matcha_disorder_post_masked: 260}

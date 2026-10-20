@@ -168,8 +168,10 @@ def test_a_smaller_test_is_archived_and_training_state_kept(tmp_path):
     assert archive_smaller_test(run, 20000) is False  # already full: left alone
 
 
-def test_training_resumes_from_the_epoch_save_point(tmp_path, monkeypatch):
-    """3 epochs straight == 1 epoch, session ends, then resume: same final adapter weights."""
+# save points come after epoch 1's training (1) and dev check (2), epoch 2's (3, 4), epoch 3's training (5)
+@pytest.mark.parametrize("stop_after_save", [1, 2, 3, 5])
+def test_training_resumes_from_the_epoch_save_point(tmp_path, monkeypatch, stop_after_save):
+    """3 epochs straight == stopped at a save point, then resumed: same weights and dev history."""
     import json
 
     pytest.importorskip("peft")
@@ -216,10 +218,13 @@ def test_training_resumes_from_the_epoch_save_point(tmp_path, monkeypatch):
     run("straight")
 
     real_save = train._save_checkpoint
+    saves = []
 
-    def save_then_stop(ckpt_dir, *a, **kw):  # the session ends right after epoch 1's save point
+    def save_then_stop(ckpt_dir, *a, **kw):  # the session ends right after the chosen save point
         real_save(ckpt_dir, *a, **kw)
-        raise SystemExit("session over")
+        saves.append(1)
+        if len(saves) == stop_after_save:
+            raise SystemExit("session over")
 
     monkeypatch.setattr(train, "_save_checkpoint", save_then_stop)
     with pytest.raises(SystemExit):
@@ -234,3 +239,13 @@ def test_training_resumes_from_the_epoch_save_point(tmp_path, monkeypatch):
     state = lambda root: json.loads((tmp_path / root / task / "m" / "seed42" / "train_state.json").read_text())
     assert [h["epoch"] for h in state("resumed")["history"]] == [1, 2, 3]
     assert [h["dev_f1"] for h in state("resumed")["history"]] == [h["dev_f1"] for h in state("straight")["history"]]
+
+
+def test_generation_stops_between_batches_at_the_deadline():
+    import time
+
+    from matcha_bench.llm.infer import generate_answers
+
+    with pytest.raises(SystemExit):
+        generate_answers(torch.nn.Linear(1, 1), type("T", (), {"pad_token_id": 0})(), [[1, 2]],
+                         deadline=time.time() - 1)

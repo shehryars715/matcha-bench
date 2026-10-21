@@ -1,0 +1,7 @@
+# Zero-shot LLM scores on the MATCHA tasks (scripts/run_llm_zeroshot.py): the released models with no
+# MATCHA training, as MentalGLM's Table 3 reports zero-shot LLMs. Everything else (prompts, inputs,
+# 4-bit weights, eval batch, answer parsing) comes from configs/llm.yaml, so the only difference from
+# the fine-tuned runs is the training.
+base: llm.yaml
+output_root: outputs/llm/zeroshot      # <task>/<model>/seed0/metrics.json
+seeds: [0]                             # greedy decoding is deterministic: one run per model

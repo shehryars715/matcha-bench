@@ -324,6 +324,26 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
                           deadline=deadline)
 
 
+def run_llm_zeroshot(task_root: Path, task: str, model_path: str, model_tag: str, output_root: Path,
+                     seed: int, hp: dict, deadline: float | None = None) -> dict | None:
+    """The released model without any MATCHA training: the test set labelled with the same prompt,
+    inputs, greedy decoding and answer parsing as the fine-tuned runs (as MentalGLM's Table 3 does for
+    zero-shot LLMs). Same output files as a fine-tuned run, so the comparison scripts read both."""
+    out_dir = Path(output_root) / task / model_tag / f"seed{seed}"
+    if (out_dir / "metrics.json").exists():
+        log.info("Skipping %s / %s zero-shot (already done)", task, model_tag)
+        return None
+    t_start = time.time()
+    meta, splits = load_task(task_root, task)
+    test_df, test_idx = _split(splits, meta, "test", hp.get("test_subset"), hp["subset_seed"])
+    model, tokenizer = load_model(model_path, hp["quant"])
+    none = splits["train"].iloc[:0]
+    return _test_and_save(model, tokenizer, get_prompt(task), meta, splits, none, none, test_df, test_idx, hp,
+                          out_dir, task, model_tag, model_path, seed,
+                          {"best_epoch": None, "history": [], "train_runtime": None}, t_start, trainable=0,
+                          deadline=deadline)
+
+
 def _test_and_save(model, tokenizer, prompt, meta, splits, train_df, dev_df, test_df, test_idx, hp, out_dir,
                    task, model_tag, model_path, seed, state, t_start, trainable, deadline=None) -> dict:
     test = _evaluate(model, tokenizer, prompt, test_df, meta, hp, deadline=deadline)

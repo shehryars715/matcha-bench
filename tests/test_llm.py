@@ -249,3 +249,43 @@ def test_generation_stops_between_batches_at_the_deadline():
     with pytest.raises(SystemExit):
         generate_answers(torch.nn.Linear(1, 1), type("T", (), {"pad_token_id": 0})(), [[1, 2]],
                          deadline=time.time() - 1)
+
+
+def test_zeroshot_scores_the_full_test_set_with_the_untrained_model(tmp_path):
+    """A zero-shot run writes the same files as a fine-tuned one, with no training and no adapter."""
+    import json
+
+    import numpy as np
+    from transformers import AutoTokenizer, GlmConfig, GlmForCausalLM
+
+    from matcha_bench.llm import train
+
+    try:
+        tok = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct", local_files_only=True)
+    except Exception:
+        pytest.skip("needs a cached chat tokenizer")
+    model_dir = tmp_path / "model"
+    torch.manual_seed(0)
+    GlmForCausalLM(GlmConfig(vocab_size=len(tok), hidden_size=16, intermediate_size=32, num_hidden_layers=1,
+                             num_attention_heads=2, num_key_value_heads=1, head_dim=8,
+                             pad_token_id=tok.pad_token_id)).save_pretrained(model_dir)
+    tok.save_pretrained(model_dir)
+    task = "matcha_user_binary_masked"
+    task_dir = tmp_path / "tasks" / task
+    task_dir.mkdir(parents=True)
+    (task_dir / "meta.json").write_text(json.dumps({"problem_type": "single_label_classification",
+                                                    "label_names": ["control", "disorder"], "average": "macro"}))
+    for split, n in [("train", 6), ("dev", 2), ("test", 5)]:
+        rows = [{"id": f"{split}{i}", "text": f"今天{i}天气", "label": i % 2} for i in range(n)]
+        (task_dir / f"{split}.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+    hp = {"quant": "fp32", "max_text_chars": 20, "max_new_tokens": 2, "eval_batch_size": 4, "subset_seed": 0,
+          "test_subset": None, "keep_adapter": True, "batch_size": 4, "grad_accum": 8}
+
+    run = lambda: train.run_llm_zeroshot(tmp_path / "tasks", task, str(model_dir), "m", tmp_path / "out", 0, hp)
+    record = run()
+    out = tmp_path / "out" / task / "m" / "seed0"
+    assert record["n_test"] == 5 and record["n_train"] == 0 and record["trainable_parameters"] == 0
+    assert record["best_epoch"] is None and record["test"]["n"] == 5
+    assert np.load(out / "test_predictions.npz")["labels"].tolist() == [0, 1, 0, 1, 0]
+    assert not (out / "best_adapter").exists()
+    assert run() is None  # finished runs are skipped

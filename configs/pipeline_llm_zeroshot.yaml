@@ -1,0 +1,20 @@
+# Zero-shot MentalGLM-chat and GLM-4-9B-chat (control: no mental-health tuning) on the 4 MATCHA tasks:
+#   python scripts/kaggle_pipeline.py start --lane 1 --pipeline configs/pipeline_llm_zeroshot.yaml --budget-hours 5
+# Inference only, one model per T4: at 4.9 posts/s and 1.7 timelines/s (session 6), each model needs
+# ~68 min per post-level task (20,000 posts) and ~7 + ~21 min for the user tasks: ~2.7 GPU-h per model.
+budget_hours: 5.0
+safety_margin_minutes: 20
+finetune_one_run_per_gpu: true
+
+stages:
+  - name: llm-packages
+    type: pip
+    packages: ["peft>=0.13", "bitsandbytes>=0.45", "transformers>=4.46"]
+  - name: zeroshot-llm
+    type: finetune
+    script: scripts/run_llm_zeroshot.py
+    config: configs/llm_zeroshot.yaml
+    prepare: [scripts/run_llm_zeroshot.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, glm-4-9b-chat, --prepare-only]
+    tasks: [matcha_disorder_post, matcha_disorder_post_masked, matcha_user_multiclass_masked, matcha_user_binary_masked]
+    models: [mentalglm-chat, glm-4-9b-chat]
+    minutes_per_run: {default: 85, matcha_user_multiclass_masked: 30, matcha_user_binary_masked: 15}

@@ -133,6 +133,58 @@ def results(args) -> None:
         print(summary[0].read_text(encoding="utf-8"))
 
 
+HF_UPLOAD_SLUG = "matcha-bench-hf-upload"
+FINAL_LLM_TAG = "mentalglm-chat-full"
+HF_UPLOAD_TEMPLATE = r'''
+import glob, json, os
+from huggingface_hub import HfApi
+from kaggle_secrets import UserSecretsClient
+
+REPO_ID = {repo_id!r}
+api = HfApi(token=UserSecretsClient().get_secret("HF_TOKEN"))
+api.create_repo(REPO_ID, private=True, exist_ok=True)
+done = 0
+for adapter in sorted(glob.glob("/kaggle/input/**/outputs/llm/finetune/*/{tag}/seed*/best_adapter", recursive=True)):
+    run_dir = os.path.dirname(adapter)
+    if not os.path.exists(os.path.join(run_dir, "metrics.json")):
+        print("skip (run not finished):", run_dir)
+        continue
+    seed, task = os.path.basename(run_dir), os.path.basename(os.path.dirname(os.path.dirname(run_dir)))
+    path = f"{{task}}/{{seed}}"
+    api.upload_folder(repo_id=REPO_ID, folder_path=adapter, path_in_repo=path, commit_message=f"Add {{path}}")
+    api.upload_file(repo_id=REPO_ID, path_or_fileobj=os.path.join(run_dir, "metrics.json"),
+                    path_in_repo=f"{{path}}/metrics.json", commit_message=f"Add {{path}} metrics")
+    print("uploaded", path, flush=True)
+    done += 1
+print(f"{{done}} adapters uploaded to https://huggingface.co/{{REPO_ID}}")
+'''
+
+
+def hf_upload(args) -> None:
+    """Upload the final (mentalglm-chat-full) LoRA adapters of the lane's last session straight from Kaggle
+    to HF (CPU job); earlier runs (capped, pilot) and save points are not uploaded."""
+    import tempfile
+
+    run = current_run()
+    status = kernel_status(ref(run))
+    if status != "complete":
+        raise SystemExit(f"{ref(run)} is {status}; upload after it completes.")
+    user = username()
+    meta = {"id": f"{user}/{HF_UPLOAD_SLUG}", "title": HF_UPLOAD_SLUG, "code_file": "upload.py",
+            "language": "python", "kernel_type": "script", "is_private": "true", "enable_internet": "true",
+            "enable_gpu": "false", "kernel_sources": [ref(run)]}
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        (tmp / "kernel-metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        (tmp / "upload.py").write_text(HF_UPLOAD_TEMPLATE.format(repo_id=args.hf_repo, tag=FINAL_LLM_TAG), encoding="utf-8")
+        if kaggle("kernels", "push", "-p", str(tmp)).returncode != 0:
+            raise SystemExit("kaggle kernels push failed")
+    # Kaggle only hands secrets to interactive runs: this pushed version fails on HF_TOKEN, and the
+    # upload happens when the account owner opens the notebook in the editor and clicks Run All
+    print(f"Upload notebook ready ({ref(run)} attached). Open it in the editor on {user} and click Run All:")
+    print(f"https://www.kaggle.com/code/{user}/{HF_UPLOAD_SLUG}")
+
+
 def account(args) -> None:
     state = load_state()
     if state.get("token_file"):
@@ -150,13 +202,15 @@ def account(args) -> None:
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("action", choices=["start", "status", "log", "results", "account"])
+    ap.add_argument("action", choices=["start", "status", "log", "results", "account", "hf-upload"])
     ap.add_argument("--pipeline", "--config", dest="pipeline", default="configs/pipeline.yaml",
                     help="start: pipeline config the session runs (configs/pipeline_llm.yaml for the LLM baseline)")
     ap.add_argument("--budget-hours", type=float, help="start: session cap instead of the config's budget_hours")
     ap.add_argument("--token-file", help="account: file holding that account's Kaggle access token")
     ap.add_argument("--data-owner", help="account: Kaggle user that owns the matcha-bench-data dataset")
     ap.add_argument("--lane", help="an independent chain of sessions with its own state and account")
+    ap.add_argument("--hf-repo", default="shehryars715/mentalglm-matcha-lora",
+                    help="hf-upload: private Hugging Face repo for the LoRA adapters")
     args = ap.parse_args()
     if args.lane:
         global STATE, RUN_PREFIX
@@ -165,7 +219,8 @@ def main():
     token_file = load_state().get("token_file")
     if token_file and args.action != "account":
         os.environ["KAGGLE_API_TOKEN"] = token_file  # the kaggle CLI subprocesses inherit it
-    {"start": start, "status": status, "log": log, "results": results, "account": account}[args.action](args)
+    {"start": start, "status": status, "log": log, "results": results, "account": account,
+     "hf-upload": hf_upload}[args.action](args)
 
 
 if __name__ == "__main__":

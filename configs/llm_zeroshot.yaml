@@ -5,3 +5,10 @@
 base: llm.yaml
 output_root: outputs/llm/zeroshot      # <task>/<model>/seed0/metrics.json
 seeds: [0]                             # greedy decoding is deterministic: one run per model
+defaults:
+  # The fine-tuned runs' 24-token cap fits their trained one-line answer. Untrained GLM-4-9B-chat opens
+  # with a preamble ("根据帖子内容，...") and was cut off before the label in ~80% of its unparsed
+  # answers (session 1-run-004), so zero-shot answers get room for a full first sentence (generation
+  # still stops at the first "。", and only that sentence is parsed, as in MentalGLM's evaluation).
+  # MentalGLM-chat's run-004 answers (cap 24) had at most 12 cut off per task.
+  max_new_tokens: 96

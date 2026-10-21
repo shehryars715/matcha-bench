@@ -1,7 +1,9 @@
 # Zero-shot MentalGLM-chat and GLM-4-9B-chat (control: no mental-health tuning) on the 4 MATCHA tasks:
 #   python scripts/kaggle_pipeline.py start --lane 1 --pipeline configs/pipeline_llm_zeroshot.yaml --budget-hours 5
-# Inference only, one model per T4: at 4.9 posts/s and 1.7 timelines/s (session 6), each model needs
-# ~68 min per post-level task (20,000 posts) and ~7 + ~21 min for the user tasks: ~2.7 GPU-h per model.
+# Inference only, one model per T4. Session 1-run-004 (cap 24 new tokens): MentalGLM-chat ~69 min per
+# post-level task (20,000 posts), 8 and 20 min for the user tasks; GLM-4-9B-chat ~108, 8 and 25 min.
+# GLM-4-9B-chat is redone with the 96-token cap (configs/llm_zeroshot.yaml); its longer answers take
+# more time, so post-level runs reserve 150 min.
 budget_hours: 5.0
 safety_margin_minutes: 20
 finetune_one_run_per_gpu: true
@@ -14,7 +16,9 @@ stages:
     type: finetune
     script: scripts/run_llm_zeroshot.py
     config: configs/llm_zeroshot.yaml
-    prepare: [scripts/run_llm_zeroshot.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, glm-4-9b-chat, --prepare-only]
+    # GLM-4-9B-chat's 24-token runs are moved to cap24/ and redone (MentalGLM-chat's are kept)
+    before: [scripts/run_llm_zeroshot.py, --tasks, all, --models, glm-4-9b-chat, --archive-other-cap]
+    prepare: [scripts/run_llm_zeroshot.py, --tasks, matcha_user_binary_masked, --models, glm-4-9b-chat, --prepare-only]
     tasks: [matcha_disorder_post, matcha_disorder_post_masked, matcha_user_multiclass_masked, matcha_user_binary_masked]
     models: [mentalglm-chat, glm-4-9b-chat]
-    minutes_per_run: {default: 85, matcha_user_multiclass_masked: 30, matcha_user_binary_masked: 15}
+    minutes_per_run: {default: 150, matcha_user_multiclass_masked: 45, matcha_user_binary_masked: 20}

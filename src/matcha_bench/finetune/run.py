@@ -3,7 +3,8 @@
 The protocol follows Chinese MentalBERT: Adam(W), lr 2e-5, batch 16, up to 10 epochs, and the
 best dev checkpoint is evaluated on test. Additions: several seeds, optional early stopping
 and class weighting (needed for imbalanced MATCHA tasks), and saved test predictions so
-significance tests can be run afterwards.
+significance tests can be run afterwards. A model can bring its own source paper's recipe
+(`model_overrides` in configs/finetune.yaml, e.g. the RoBERTa baseline's lr 1e-5 and dropout 0.3).
 """
 
 from __future__ import annotations
@@ -87,12 +88,15 @@ def run_finetune(
         return EncodedDataset(dict(enc), labels)
 
     datasets = {s: encode(df) for s, df in splits.items()}
+    # dropout in front of the classification layer; unset keeps the model's own (hidden_dropout_prob, 0.1)
+    dropout = {} if hp.get("classifier_dropout") is None else {"classifier_dropout": hp["classifier_dropout"]}
     model = AutoModelForSequenceClassification.from_pretrained(
         model_path,
         num_labels=len(label_names),
         problem_type=problem_type,
         id2label=dict(enumerate(label_names)),
         label2id={n: i for i, n in enumerate(label_names)},
+        **dropout,
     )
 
     class_weights = None

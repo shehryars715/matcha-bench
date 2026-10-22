@@ -1,0 +1,34 @@
+# RoBERTa baseline (Murarka et al., LOUHI 2021) on the four core MATCHA tasks, then its sanity check on
+# the paper's own Reddit data. Its own lane of sessions:
+#   python scripts/kaggle_pipeline.py start --lane roberta --pipeline configs/pipeline_roberta.yaml
+# roberta-wwm-ext is the size of bert-wwm-ext, whose measured single-GPU epochs (two runs sharing a
+# session) took ~2.9 min on disorder_post(+masked) and user_multiclass_masked and ~1.0 min on
+# user_binary_masked. At the paper's 10 epochs: ~30/30/30/10 min per run, 12 runs ≈ 2.5 h on two GPUs;
+# the Reddit run (one seed, longer posts) ~35-60 min. One session of ~3.5 h.
+budget_hours: 5.0
+safety_margin_minutes: 20
+finetune_one_run_per_gpu: true
+
+stages:
+  # Longest tasks first, so the short user_binary_masked runs fill the end of the session.
+  - name: finetune-roberta
+    type: finetune
+    config: configs/finetune.yaml
+    tasks: [matcha_disorder_post, matcha_disorder_post_masked,
+            matcha_user_multiclass_masked, matcha_user_binary_masked]
+    models: [roberta-wwm-ext]
+    minutes_per_run: {default: 40, matcha_user_binary_masked: 15}
+  # After the MATCHA runs, so a failed Google Drive download cannot hold them up.
+  - name: reddit-packages
+    type: pip
+    packages: ["gdown>=5.2"]     # a minimum, so an older preinstalled gdown is upgraded
+  - name: finetune-reddit-sanity
+    type: finetune
+    config: configs/finetune_reddit.yaml
+    before: [scripts/download_reddit_data.py]
+    tasks: [reddit_posts]
+    models: [roberta-base]
+    seeds: [42]                  # one seed (user, 2026-10-22); the paper reports one run
+    minutes_per_run: {default: 60}
+  - name: summary
+    type: summary

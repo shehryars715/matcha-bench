@@ -130,6 +130,24 @@ python scripts/kaggle_pipeline.py start --pipeline configs/pipeline_llm.yaml
 
 Results go to `outputs/llm/` (`sanity/`, `finetune/<task>/<model>/seed<k>/`, `finetune/_probe/`).
 
+## 3d. The RoBERTa baseline (Murarka et al., 2021)
+
+One session (~3.5 h) in its own lane:
+
+```bash
+python scripts/kaggle_pipeline.py start --lane roberta --pipeline configs/pipeline_roberta.yaml
+```
+
+- **MATCHA fine-tuning** (`finetune-roberta` stage). `hfl/chinese-roberta-wwm-ext` on the four core
+  tasks, 3 seeds, with the paper's recipe (`model_overrides` in `configs/finetune.yaml`: lr 1e-5,
+  10 epochs, dropout 0.3, 512 tokens). Same tasks, best-dev selection and metrics as the BERT runs.
+- **Sanity check** (`finetune-reddit-sanity` stage). `roberta-base` on the paper's own Reddit
+  posts, which the session downloads from the authors' Google Drive folder with gdown
+  (`scripts/download_reddit_data.py`; the task goes to `outputs/tasks/reddit_posts`). It compares
+  with the paper's F1 of 0.86. It runs after the MATCHA runs, so a failed download cannot hold them up.
+
+Results go to `outputs/finetune/<task>/<model>/seed<k>/`, as for the other BERT-type runs.
+
 ## 4. Resuming across sessions
 
 - **DAPT** saves a checkpoint every `save_steps` and resumes automatically from the last one in

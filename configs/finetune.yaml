@@ -15,6 +15,12 @@ models:
   matcha-random: outputs/dapt/random/final
   matcha-depression: outputs/dapt/depression/final
   matcha-multidisorder: outputs/dapt/multidisorder/final
+  # RoBERTa baseline (Murarka et al., LOUHI 2021): the paper's roberta-base reads English only, so
+  # on MATCHA it is HFL's Chinese RoBERTa (BERT architecture trained the RoBERTa way: no next-
+  # sentence prediction, more data and steps; whole-word masking), the sibling of bert-wwm-ext.
+  # roberta-base itself runs the sanity check on the paper's Reddit data (configs/finetune_reddit.yaml).
+  roberta-wwm-ext: hfl/chinese-roberta-wwm-ext
+  roberta-base: FacebookAI/roberta-base
 
 defaults:
   epochs: 10
@@ -26,6 +32,7 @@ defaults:
   early_stopping_patience: 3     # stops after 3 epochs without dev improvement (best-dev selection is unchanged)
   class_weight: null
   max_length: null               # null -> task default (128 post-level, 512 user-level)
+  classifier_dropout: null       # null -> the model's own (0.1)
   keep_checkpoints: false
 
 task_overrides:
@@ -35,3 +42,13 @@ task_overrides:
   matcha_user_binary_masked: {epochs: 6, early_stopping_patience: 2}
   matcha_user_multiclass: {epochs: 6, early_stopping_patience: 2, class_weight: balanced}
   matcha_user_multiclass_masked: {epochs: 6, early_stopping_patience: 2, class_weight: balanced}
+
+# Settings that differ for one model tag (applied after defaults and task_overrides).
+# The RoBERTa models use Murarka et al.'s recipe: Adam, lr 1e-5, 10 epochs (no early stopping),
+# batch 16 for posts, dropout 0.3 before the classification layer, 512 tokens. Not given in the
+# paper, so kept as for every other model: no warm-up, linear decay, best dev epoch, and the task's
+# class weights (their Reddit classes were balanced; MATCHA's are not).
+model_overrides:
+  roberta-wwm-ext: &murarka2021 {learning_rate: 1.0e-5, epochs: 10, early_stopping_patience: null,
+                                 classifier_dropout: 0.3, max_length: 512}
+  roberta-base: *murarka2021

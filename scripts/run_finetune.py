@@ -12,6 +12,12 @@ from matcha_bench.config import load_config, resolve_path
 from matcha_bench.finetune.run import run_finetune
 
 
+def hparams(cfg: dict, task: str, tag: str) -> dict:
+    """defaults < task_overrides[task] < model_overrides[tag] (a model run with its own paper's recipe)."""
+    return {**cfg["defaults"], **(cfg.get("task_overrides") or {}).get(task, {}),
+            **(cfg.get("model_overrides") or {}).get(tag, {})}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default="configs/finetune.yaml")
@@ -31,8 +37,8 @@ def main():
     seeds = args.seeds or cfg["seeds"]
 
     for task in tasks:
-        hp = {**cfg["defaults"], **(cfg.get("task_overrides") or {}).get(task, {})}
         for tag in models:
+            hp = hparams(cfg, task, tag)
             source = str(cfg["models"].get(tag, tag))
             local = resolve_path(source)
             if local.exists():

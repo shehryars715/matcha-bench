@@ -1,0 +1,5 @@
+# Sanity check for the RoBERTa baseline on Murarka et al.'s own Reddit data (task reddit_posts). The
+# task is built on Kaggle by scripts/download_reddit_data.py into outputs/tasks, because data/ is
+# read-only there. Models, recipe (model_overrides: roberta-base) and output folder as in finetune.yaml.
+base: finetune.yaml
+task_root: outputs/tasks

@@ -3,8 +3,8 @@
 # Tag mentalglm-chat-full (configs/llm.yaml): all training data, best epoch on the full dev set.
 # Per post-level run: 2 x (~3.3 h training + ~50 min dev check) + ~70 min test, about 10 h, so runs
 # span sessions; save points after each epoch's training and dev check let them continue.
-# This lane: disorder_post seeds 42-44 and disorder_post_masked seeds 42-43 (~50 GPU-h, ~25 h of
-# sessions). Lane 1 (configs/pipeline_llm_full_1.yaml) runs the rest.
+# This lane: disorder_post seeds 42-43 and disorder_post_masked seed 42. Lane 1
+# (configs/pipeline_llm_full_1.yaml) and lane 3 (configs/pipeline_llm_full_3.yaml) run the rest.
 budget_hours: 9.0
 safety_margin_minutes: 30
 finetune_one_run_per_gpu: true   # one 4-bit LoRA run per T4
@@ -19,10 +19,10 @@ stages:
     script: scripts/run_llm_finetune.py
     config: configs/llm.yaml
     prepare: [scripts/run_llm_finetune.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, --prepare-only]
-    # disorder_post seed 44 diverged (NaN loss from epoch 1 step ~211; every test answer unparsed):
-    # moved to its diverged/ folder and trained again, now with the non-finite-loss guard.
-    before: [scripts/run_llm_finetune.py, --tasks, matcha_disorder_post, matcha_disorder_post_masked, --models, mentalglm-chat-full, --archive-diverged]
+    # disorder_post seed 44 diverged (NaN loss from epoch 1 step ~211; every test answer unparsed).
+    # It and disorder_post_masked seed 43 moved to lane 3 (configs/pipeline_llm_full_3.yaml); this
+    # lane's seed-44 output is the diverged run, not a result.
     tasks: [matcha_disorder_post, matcha_disorder_post_masked]
     models: [mentalglm-chat-full]
-    seeds: {matcha_disorder_post_masked: [42, 43], default: [42, 43, 44]}
+    seeds: {matcha_disorder_post: [42, 43], matcha_disorder_post_masked: [42]}
     minutes_per_run: {default: 260}

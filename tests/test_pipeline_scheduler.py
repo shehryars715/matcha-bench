@@ -21,7 +21,8 @@ def pipeline(monkeypatch, tmp_path):
     monkeypatch.setattr(run_pipeline, "POLL_SECONDS", 0.05)
     monkeypatch.setattr(run_pipeline, "gpu_slots", lambda: ["0", "1"])
 
-    def fake_start(task, model, seed, device):
+    def fake_start(task, model, seed, device, **extra):
+        assert extra == {"config": str(tmp_path / "ft.yaml")}  # BERT runs read the stage's config too
         active = sum(p.poll() is None for *_, p in launched)
         code = 3 if model == "broken" else 0
         proc = subprocess.Popen([sys.executable, "-c", f"import time, sys; time.sleep(0.3); sys.exit({code})"])
@@ -118,6 +119,19 @@ def test_before_command_runs_ahead_of_the_queue(pipeline, monkeypatch, tmp_path)
     monkeypatch.setattr(rp, "run", fake_run)
     assert rp.stage_finetune(dict(stage(["a"]), before=["x.py"]), deadline=time.time() + 3600) is True
     assert sorted(seed for _, _, seed, *_ in launched) == [1, 2]
+
+
+def test_a_bert_run_is_launched_with_the_stage_config(monkeypatch):
+    """The Reddit sanity stage (configs/finetune_reddit.yaml: its own task_root) once ran with the
+    default config and failed to find its task."""
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    import run_pipeline
+
+    seen = []
+    monkeypatch.setattr(run_pipeline.subprocess, "Popen", lambda cmd, **kw: seen.append(cmd))
+    run_pipeline.start_finetune("reddit_posts", "roberta-base", 42, None, config="configs/finetune_reddit.yaml")
+    assert seen[0][1:] == ["scripts/run_finetune.py", "--tasks", "reddit_posts", "--models", "roberta-base",
+                           "--seeds", "42", "--config", "configs/finetune_reddit.yaml"]
 
 
 def test_a_stage_can_run_fewer_seeds(pipeline):

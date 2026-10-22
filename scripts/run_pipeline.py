@@ -133,8 +133,10 @@ def stage_finetune(stage, deadline) -> bool:
     ft = load_config(resolve_path(stage["config"]))
     out_root = resolve_path(ft["output_root"])
     script = stage.get("script", "scripts/run_finetune.py")
-    extra = {} if script == "scripts/run_finetune.py" else {"script": script, "config": stage["config"],
-                                                             "deadline": deadline}
+    # every run reads the stage's own config (task_root, models, recipes); LLM runs also stop at the deadline
+    extra = {"config": stage["config"]}
+    if script != "scripts/run_finetune.py":
+        extra.update(script=script, deadline=deadline)
     reserve = stage.get("minutes_per_run", {})
     if stage.get("before") and run([PY, *stage["before"]]) != 0:  # e.g. mark runs to re-test
         log_event(stage=stage["name"], status="before failed")
@@ -172,7 +174,7 @@ def stage_finetune(stage, deadline) -> bool:
                 paused = True
                 break
             task, model, seed = job = fits[0]
-            if extra and stage.get("prepare") and not prepared:  # e.g. download/convert the LLM once
+            if stage.get("prepare") and not prepared:  # e.g. download/convert the LLM once
                 if run([PY, *stage["prepare"]]) != 0:
                     log_event(stage=stage["name"], status="prepare failed")
                     return False

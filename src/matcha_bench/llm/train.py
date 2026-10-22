@@ -111,6 +111,40 @@ def _load_checkpoint(ckpt_dir: Path, model, optim, sched, scaler) -> dict:
     return state
 
 
+def _diverged(out_dir: Path, model, epoch: int, step: int, n_bad: int) -> None:
+    """Stop a run whose loss has been non-finite for `n_bad` batches in a row. Records where it
+    happened and whether the adapter weights themselves are broken (diverged.json), keeps no save
+    point from this epoch, and raises."""
+    bad_params = [n for n, p in model.named_parameters() if p.requires_grad and not torch.isfinite(p).all()]
+    info = {"epoch": epoch, "step": step, "nonfinite_batches_in_a_row": n_bad,
+            "nonfinite_adapter_tensors": len(bad_params), "examples": bad_params[:5]}
+    save_json(info, out_dir / "diverged.json")
+    raise RuntimeError(f"{out_dir}: loss non-finite for {n_bad} batches in a row (epoch {epoch}, step {step}); "
+                       f"run stopped. {info}")
+
+
+def archive_diverged(out_dir: Path) -> bool:
+    """Move aside a finished run that never produced a usable answer (every test answer unparsed, as
+    after a NaN divergence), with its adapter and training state, into diverged/, so the next call
+    trains it again from the start. Returns True if it archived anything."""
+    out_dir = Path(out_dir)
+    metrics_path = out_dir / "metrics.json"
+    if not metrics_path.exists():
+        return False
+    m = json.loads(metrics_path.read_text(encoding="utf-8"))
+    if m["test"]["unparsed"] < m["n_test"]:
+        return False
+    archive = out_dir / "diverged"
+    archive.mkdir(exist_ok=True)
+    for name in ("best_adapter", "checkpoint", "train_state.json", "test_predictions.npz", "test_answers.jsonl",
+                 "diverged.json", "metrics.json"):  # metrics.json last
+        if (out_dir / name).exists():
+            shutil.move(str(out_dir / name), str(archive / name))
+    log.info("%s: every test answer unparsed (%d); archived to %s and queued for retraining",
+             out_dir, m["n_test"], archive.name)
+    return True
+
+
 def _split(splits, meta, name, k, seed):
     df = splits[name].reset_index(drop=True)
     stratify = None if meta["problem_type"].startswith("multi") else df["label"].astype(int).values
@@ -239,6 +273,10 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
                          {"epoch": epoch, "evaluated": done_dev, "step": step, "history": history,
                           "best": best, "best_epoch": best_epoch, "bad_epochs": bad_epochs})
 
+    # A run whose loss stays NaN/inf has diverged (disorder_post seed 44, session 2-run-002: NaN from
+    # step ~211 on, then hours of training and testing on garbage). Isolated bad batches are left to
+    # the GradScaler, which skips their step; this many in a row stop the run.
+    max_nonfinite, nonfinite = hp.get("max_nonfinite_batches", 32), 0
     step_at_start = step
     t_train = time.time()
     for epoch in range(1, (1 if probe_steps else hp["epochs"]) + 1):
@@ -256,7 +294,11 @@ def run_llm_finetune(task_root: Path, task: str, model_path: str, model_tag: str
                 with torch.autocast("cuda", dtype=torch.float16, enabled=torch.cuda.is_available()):
                     loss = answer_loss(model, ids, mask, labels)
                 scaler.scale(loss / accum).backward()
-                running, n_loss = running + loss.item(), n_loss + 1
+                value = loss.item()
+                nonfinite = 0 if math.isfinite(value) else nonfinite + 1
+                if max_nonfinite and nonfinite >= max_nonfinite:
+                    _diverged(out_dir, model, epoch, step, nonfinite)
+                running, n_loss = running + value, n_loss + 1
                 if (b + 1) % accum == 0 or b + 1 == len(batches):
                     scaler.unscale_(optim)
                     torch.nn.utils.clip_grad_norm_(params, hp.get("max_grad_norm", 1.0))

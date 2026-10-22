@@ -241,6 +241,72 @@ def test_training_resumes_from_the_epoch_save_point(tmp_path, monkeypatch, stop_
     assert [h["dev_f1"] for h in state("resumed")["history"]] == [h["dev_f1"] for h in state("straight")["history"]]
 
 
+def test_training_stops_when_the_loss_stays_nonfinite(tmp_path, monkeypatch):
+    import json
+
+    pytest.importorskip("peft")
+    from transformers import AutoTokenizer, GlmConfig, GlmForCausalLM
+
+    from matcha_bench.llm import train
+
+    try:
+        tok = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct", local_files_only=True)
+    except Exception:
+        pytest.skip("needs a cached chat tokenizer")
+    model_dir = tmp_path / "model"
+    GlmForCausalLM(GlmConfig(vocab_size=len(tok), hidden_size=16, intermediate_size=32, num_hidden_layers=1,
+                             num_attention_heads=2, num_key_value_heads=1, head_dim=8,
+                             pad_token_id=tok.pad_token_id)).save_pretrained(model_dir)
+    tok.save_pretrained(model_dir)
+    task = "matcha_user_binary_masked"
+    task_dir = tmp_path / "tasks" / task
+    task_dir.mkdir(parents=True)
+    (task_dir / "meta.json").write_text(json.dumps({"problem_type": "single_label_classification",
+                                                    "label_names": ["control", "disorder"], "average": "macro"}))
+    for split, n in [("train", 12), ("dev", 4), ("test", 4)]:
+        rows = [{"id": f"{split}{i}", "text": f"今天{i}天气", "label": i % 2} for i in range(n)]
+        (task_dir / f"{split}.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+    hp = {"quant": "fp32", "lora_rank": 4, "lora_alpha": 8, "lora_dropout": 0.0, "lora_target": None,
+          "learning_rate": 1e-2, "warmup_ratio": 0.01, "weight_decay": 0.0, "max_grad_norm": 1.0,
+          "batch_size": 2, "grad_accum": 2, "epochs": 2, "early_stopping_patience": None, "max_seq_len": 128,
+          "max_text_chars": 20, "max_new_tokens": 2, "eval_batch_size": 4, "subset_seed": 0,
+          "train_subset": None, "dev_subset": None, "test_subset": None, "keep_adapter": True,
+          "max_nonfinite_batches": 3}
+    calls = []
+    real_loss = train.answer_loss
+
+    def loss_turns_nan(*a):  # 2 good batches, then NaN for good
+        calls.append(1)
+        loss = real_loss(*a)
+        return loss if len(calls) <= 2 else loss * float("nan")
+
+    monkeypatch.setattr(train, "answer_loss", loss_turns_nan)
+    with pytest.raises(RuntimeError, match="non-finite for 3 batches"):
+        train.run_llm_finetune(tmp_path / "tasks", task, str(model_dir), "m", tmp_path / "out", 42, hp)
+    out = tmp_path / "out" / task / "m" / "seed42"
+    assert len(calls) == 5
+    assert json.loads((out / "diverged.json").read_text())["epoch"] == 1
+    assert not (out / "metrics.json").exists() and not (out / "checkpoint").exists()
+
+
+def test_a_diverged_run_is_archived_for_retraining(tmp_path):
+    import json
+
+    from matcha_bench.llm.train import archive_diverged
+
+    run = tmp_path / "seed44"
+    (run / "best_adapter").mkdir(parents=True)
+    (run / "train_state.json").write_text("{}")
+    (run / "test_answers.jsonl").write_text("")
+    (run / "metrics.json").write_text(json.dumps({"n_test": 20000, "test": {"unparsed": 20000}}))
+    assert archive_diverged(run) is True
+    assert sorted(p.name for p in run.iterdir()) == ["diverged"]
+    assert (run / "diverged" / "best_adapter").is_dir() and (run / "diverged" / "metrics.json").exists()
+
+    (run / "metrics.json").write_text(json.dumps({"n_test": 20000, "test": {"unparsed": 2}}))
+    assert archive_diverged(run) is False  # a normal run is left alone
+
+
 def test_generation_stops_between_batches_at_the_deadline():
     import time
 

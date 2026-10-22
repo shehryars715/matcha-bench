@@ -6,7 +6,9 @@
 
 Finished runs (metrics.json present) are skipped. `--archive-smaller-tests` moves aside the test
 results of finished runs that cover fewer test items than the config now asks for (into
-test_subset<n>/), so the next call re-tests their saved best adapter without retraining. `--probe-steps N` only times N optimizer steps
+test_subset<n>/), so the next call re-tests their saved best adapter without retraining.
+`--archive-diverged` moves aside finished runs whose every test answer is unparsed (a NaN
+divergence) into diverged/, so the next call trains them again. `--probe-steps N` only times N optimizer steps
 and a small generation pass, writing outputs/llm/finetune/_probe/<task>__<model>.json, to plan
 GPU time. Same command-line shape as scripts/run_finetune.py, so the pipeline can run either.
 """
@@ -20,7 +22,7 @@ import torch
 import _bootstrap  # noqa: F401
 from matcha_bench.config import load_config, resolve_path
 from matcha_bench.llm.convert import ensure_converted
-from matcha_bench.llm.train import archive_smaller_test, planned_test_size, run_llm_finetune
+from matcha_bench.llm.train import archive_diverged, archive_smaller_test, planned_test_size, run_llm_finetune
 
 
 def hparams(cfg: dict, task: str, tag: str) -> dict:
@@ -39,6 +41,8 @@ def main():
     ap.add_argument("--prepare-only", action="store_true", help="download and convert the models, then stop")
     ap.add_argument("--archive-smaller-tests", action="store_true",
                     help="move aside finished runs tested on fewer items than now planned, then stop")
+    ap.add_argument("--archive-diverged", action="store_true",
+                    help="move aside finished runs with every test answer unparsed (diverged), then stop")
     ap.add_argument("--set", nargs="*", default=[], help="e.g. defaults.epochs=1")
     args = ap.parse_args()
     cfg = load_config(resolve_path(args.config), args.set)
@@ -52,6 +56,12 @@ def main():
                 n = planned_test_size(task_root, task, hparams(cfg, task, tag))
                 for seed in args.seeds or cfg["seeds"]:
                     archive_smaller_test(resolve_path(cfg["output_root"]) / task / tag / f"seed{seed}", n)
+        return
+    if args.archive_diverged:
+        for task in tasks:
+            for tag in args.models:
+                for seed in args.seeds or cfg["seeds"]:
+                    archive_diverged(resolve_path(cfg["output_root"]) / task / tag / f"seed{seed}")
         return
 
     for tag in args.models:

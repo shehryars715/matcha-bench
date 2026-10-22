@@ -270,6 +270,7 @@ def main():
     ap.add_argument("--config", default="configs/pipeline.yaml")
     ap.add_argument("--deadline", type=float, help="unix time by which to stop (already includes the margin)")
     ap.add_argument("--budget-hours", type=float, help="override the config budget (from now)")
+    ap.add_argument("--margin-minutes", type=float, help="override the config safety_margin_minutes")
     ap.add_argument("--no-limit", action="store_true", help="no time budget (e.g. a local GPU)")
     ap.add_argument("--dapt-set", nargs="*", default=[], help="config overrides for every DAPT run")
     ap.add_argument("--finetune-set", nargs="*", default=[], help="config overrides for every fine-tuning run")
@@ -286,7 +287,8 @@ def main():
     else:
         budget = args.budget_hours or cfg["budget_hours"]
         start = float(os.environ.get("JOB_START", time.time()))  # set by Kaggle jobs at session start
-        deadline = start + budget * 3600 - cfg["safety_margin_minutes"] * 60
+        margin = cfg["safety_margin_minutes"] if args.margin_minutes is None else args.margin_minutes
+        deadline = start + budget * 3600 - margin * 60
     log_event(stage="session", status="start", minutes_available=round(minutes_left(deadline)))
 
     for stage in cfg["stages"]:

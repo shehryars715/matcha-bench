@@ -83,6 +83,8 @@ def start(args) -> None:
     slug = f"{RUN_PREFIX}{n:03d}"
     budget = args.budget_hours or cfg["budget_hours"]
     command = f"python scripts/run_pipeline.py --config {args.pipeline} --budget-hours {budget}"
+    if args.margin_minutes is not None:
+        command += f" --margin-minutes {args.margin_minutes}"
     url = push_kernel(slug, [command], sources, timeout_hours=budget, data_owner=state.get("data_owner"))
     state["runs"].append({"slug": slug, "owner": username(), "pipeline": args.pipeline,
                           "resumes": sources[0] if sources else None,
@@ -206,6 +208,8 @@ def main():
     ap.add_argument("--pipeline", "--config", dest="pipeline", default="configs/pipeline.yaml",
                     help="start: pipeline config the session runs (configs/pipeline_llm.yaml for the LLM baseline)")
     ap.add_argument("--budget-hours", type=float, help="start: session cap instead of the config's budget_hours")
+    ap.add_argument("--margin-minutes", type=float,
+                    help="start: stop this long before the cap instead of the config's safety_margin_minutes")
     ap.add_argument("--token-file", help="account: file holding that account's Kaggle access token")
     ap.add_argument("--data-owner", help="account: Kaggle user that owns the matcha-bench-data dataset")
     ap.add_argument("--lane", help="an independent chain of sessions with its own state and account")

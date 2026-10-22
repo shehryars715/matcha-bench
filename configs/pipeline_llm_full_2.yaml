@@ -19,6 +19,9 @@ stages:
     script: scripts/run_llm_finetune.py
     config: configs/llm.yaml
     prepare: [scripts/run_llm_finetune.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, --prepare-only]
+    # disorder_post seed 44 diverged (NaN loss from epoch 1 step ~211; every test answer unparsed):
+    # moved to its diverged/ folder and trained again, now with the non-finite-loss guard.
+    before: [scripts/run_llm_finetune.py, --tasks, matcha_disorder_post, matcha_disorder_post_masked, --models, mentalglm-chat-full, --archive-diverged]
     tasks: [matcha_disorder_post, matcha_disorder_post_masked]
     models: [mentalglm-chat-full]
     seeds: {matcha_disorder_post_masked: [42, 43], default: [42, 43, 44]}

@@ -1,10 +1,14 @@
 # Final MentalGLM baseline, lane 3 (a fourth account; takes over the last two runs of lane 2):
 #   python scripts/kaggle_pipeline.py start --lane 3 --pipeline configs/pipeline_llm_full_3.yaml
 # Tag mentalglm-chat-full (configs/llm.yaml): all training data, best epoch on the full dev set.
-# This lane: disorder_post seed 44 (lane 2's run diverged: NaN loss from epoch 1; retrained here with
-# the non-finite-loss guard) and disorder_post_masked seed 43. Fresh chain, so both start from scratch.
+# This lane: the third disorder_post seed and disorder_post_masked seed 43.
+# Rule for diverged runs: a run whose loss stays non-finite (it stops with diverged.json) is restarted
+# with the next unused seed, and every diverged attempt is reported. disorder_post seed 44 diverged in
+# two attempts (lane 2 session 2: NaN from step ~211; this lane, session 1: stopped at step 175 with
+# finite adapter weights, i.e. fp16 overflow in the forward pass), so its third seed is 45.
 # Measured in lane 2 with two runs sharing a session: epoch 1 + dev check ~290 min, epoch 2 + dev
-# check ~270 min, test ~70 min. Two sessions: ~5.75 h (ends after the epoch-1 save point) and ~6.5 h.
+# check ~270 min, test ~70 min. Sessions: 1 (5.75 h) = masked s43 epoch 1 + dev; 2 (~7 h) = masked s43
+# epoch 2 + dev + test beside disorder_post s45 epoch 1 + dev; 3 (~6.5 h) = s45 epoch 2 + dev + test.
 budget_hours: 9.0
 safety_margin_minutes: 30
 finetune_one_run_per_gpu: true   # one 4-bit LoRA run per T4
@@ -21,5 +25,5 @@ stages:
     prepare: [scripts/run_llm_finetune.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, --prepare-only]
     tasks: [matcha_disorder_post, matcha_disorder_post_masked]
     models: [mentalglm-chat-full]
-    seeds: {matcha_disorder_post: [44], matcha_disorder_post_masked: [43]}
+    seeds: {matcha_disorder_post: [45], matcha_disorder_post_masked: [43]}
     minutes_per_run: {default: 260}

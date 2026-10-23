@@ -29,7 +29,7 @@ method is planned as follow-up work.
 | Baseline | Paper | What is reproduced here |
 |---|---|---|
 | Chinese MentalBERT | Zhai et al., [Findings of ACL 2024](https://aclanthology.org/2024.findings-acl.629/) | lexicon-guided domain-adaptive pre-training (DAPT) of `hfl/chinese-bert-wwm-ext` on MATCHA, plus the released model, the start model and a random-masking control |
-| MentalGLM | Zhai et al. ([code](https://github.com/zwzzzQAQ/MentalGLM)) | the released MentalGLM-chat (GLM-4-9B), QLoRA-tuned per task with label-only answers; zero-shot rows as an extra |
+| MentalGLM | Zhai et al., [EMNLP 2025](https://aclanthology.org/2025.emnlp-main.686/) | the released MentalGLM-chat (GLM-4-9B), QLoRA-tuned per task with label-only answers; zero-shot rows as an extra |
 | RoBERTa classifier | Murarka et al., LOUHI 2021 ([code](https://github.com/amurark/mental-health-detection)) | `hfl/chinese-roberta-wwm-ext` with the paper's recipe |
 
 Each reproduction is first checked on its paper's own evaluation tasks (the sanity checks below).
@@ -250,6 +250,6 @@ masking) and `matcha_ip_post` (is a post an explicit self-report of diagnosis or
 ```
 
 Please also cite the work this builds on: MATCHA (Li et al., 2025), Chinese MentalBERT (Zhai et
-al., 2024), MentalGLM (Zhai et al.), Murarka et al. (2021), the Chinese BERT/RoBERTa models (Cui et
+al., 2024), MentalGLM (Zhai et al., 2025), Murarka et al. (2021), the Chinese BERT/RoBERTa models (Cui et
 al., 2021), the depression lexicon (Li et al., 2020), and the evaluation datasets (SMP2020-EWECT;
 Qi et al., 2023; SOS-HL-1K; the RoBERTa paper's Reddit data).

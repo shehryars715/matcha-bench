@@ -44,7 +44,7 @@ chunks. Fine-tuning: lr 2e-5, batch 16, 10 epochs, best dev.
 | Cognitive, Suicide | 5-fold cross-validation | one fixed split of the paper's sizes (2,180/545/682; 799/200/250) | one split for all models and seeds |
 | Models on MATCHA | — | `bert-base-chinese` and `matcha-multidisorder` not run on the MATCHA tasks | GPU time (~8 GPU-h); both ran on the sanity tasks |
 
-## 2. MentalGLM (Zhai et al.)
+## 2. MentalGLM (Zhai et al., EMNLP 2025)
 
 **Paper.** GLM-4-9B, LoRA instruction tuning in two stages; the second on the C-IMHI task data with
 an explanation for every label, the three tasks trained together. 10 epochs, fp16, batch 4 × 8,

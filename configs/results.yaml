@@ -1,0 +1,157 @@
+# Which finished runs make up each results table (scripts/make_tables.py).
+#
+# Every `path` is relative to an output root and may use {task}, {tag} and {seed}. A run can sit in
+# several roots (each Kaggle session restores the earlier outputs): the copies must agree, and the one
+# with saved test predictions is used. `match` keeps only copies whose metrics.json has these values
+# (dotted keys), for runs that were redone with other settings.
+
+roots:
+  - outputs                                    # runs made on this machine
+  - outputs/kaggle/*/matcha-bench/outputs      # outputs downloaded from Kaggle sessions
+out_dir: outputs/results/paper
+
+seeds: [42, 43, 44]
+bootstrap:
+  n_resamples: 10000
+  seed: 0
+  alpha: 0.05
+
+task_names:
+  matcha_disorder_post: disorder_post
+  matcha_disorder_post_masked: disorder_post_masked
+  matcha_user_binary_masked: user_binary_masked
+  matcha_user_multiclass_masked: user_multiclass_masked
+  suicide: Suicide
+  cognitive: Cognitive
+  waimai: Waimai
+  ewect_usual: EWECT-usual
+  ewect_epidemic: EWECT-epidemic
+  reddit_posts: Reddit posts
+
+models:
+  tfidf-lr:
+    name: TF-IDF + LR
+    group: Reference
+    path: finetune/{task}/{tag}/seed{seed}
+    seeds: [0]
+  bert-base-chinese:
+    name: BERT-base-Chinese
+    group: Chinese MentalBERT
+    path: finetune/{task}/{tag}/seed{seed}
+  bert-wwm-ext:
+    name: Chinese-BERT-wwm-ext (start model)
+    group: Chinese MentalBERT
+    path: finetune/{task}/{tag}/seed{seed}
+  chinese-mentalbert:
+    name: Chinese MentalBERT (released)
+    group: Chinese MentalBERT
+    path: finetune/{task}/{tag}/seed{seed}
+  matcha-random:
+    name: DAPT on MATCHA, random masking (control)
+    group: Chinese MentalBERT
+    path: finetune/{task}/{tag}/seed{seed}
+  matcha-depression:
+    name: DAPT on MATCHA, lexicon-guided (reproduction)
+    group: Chinese MentalBERT
+    path: finetune/{task}/{tag}/seed{seed}
+  matcha-multidisorder:
+    name: DAPT on MATCHA, multi-disorder lexicon
+    group: Chinese MentalBERT
+    path: finetune/{task}/{tag}/seed{seed}
+  roberta-wwm-ext:
+    name: RoBERTa-wwm-ext
+    group: RoBERTa
+    path: finetune/{task}/{tag}/seed{seed}
+  roberta-base:
+    name: RoBERTa-base
+    group: RoBERTa
+    path: finetune/{task}/{tag}/seed{seed}
+    seeds: [42]
+  mentalglm-chat-ft:
+    name: MentalGLM-chat, QLoRA fine-tuned
+    group: MentalGLM
+    path: llm/finetune/{task}/{tag}/seed{seed}
+    tag: mentalglm-chat-full
+    tag_per_task:
+      # all 2,392 training users and the full dev set were used here already (the cap never bit)
+      matcha_user_binary_masked: mentalglm-chat
+    seeds:
+      # seed 44 diverged in two attempts (NaN guard); replaced by the next unused seed
+      matcha_disorder_post: [42, 43, 45]
+  mentalglm-chat-zs:
+    name: MentalGLM-chat, zero-shot
+    group: Zero-shot
+    path: llm/zeroshot/{task}/{tag}/seed{seed}
+    tag: mentalglm-chat
+    seeds: [0]
+  glm-4-9b-chat-zs:
+    name: GLM-4-9B-chat, zero-shot (control)
+    group: Zero-shot
+    path: llm/zeroshot/{task}/{tag}/seed{seed}
+    tag: glm-4-9b-chat
+    seeds: [0]
+    match: {hyperparameters.max_new_tokens: 96}
+  mentalglm-chat-fp16:
+    name: MentalGLM-chat (released), fp16
+    group: MentalGLM
+    path: llm/sanity/mentalglm-chat__fp16/{task}
+    seeds: [null]
+  mentalglm-chat-fp16-bs1:
+    name: MentalGLM-chat (released), fp16, batch 1
+    group: MentalGLM
+    path: llm/sanity/mentalglm-chat__fp16__bs1/{task}
+    seeds: [null]
+  mentalglm-chat-4bit:
+    name: MentalGLM-chat (released), 4-bit
+    group: MentalGLM
+    path: llm/sanity/mentalglm-chat__4bit/{task}
+    seeds: [null]
+
+# Test macro-F1 on the 4 MATCHA tasks; every pair of these models is bootstrapped.
+main:
+  tasks: [matcha_disorder_post, matcha_disorder_post_masked, matcha_user_binary_masked, matcha_user_multiclass_masked]
+  models: [tfidf-lr, bert-wwm-ext, chinese-mentalbert, matcha-random, matcha-depression, roberta-wwm-ext,
+           mentalglm-chat-ft, mentalglm-chat-zs, glm-4-9b-chat-zs]
+
+# Each reproduction against the numbers its paper reports on the paper's own tasks.
+sanity:
+  - name: chinese_mentalbert
+    title: Chinese MentalBERT tasks (F1; Suicide and Waimai binary, Cognitive micro, EWECT macro)
+    tasks: [suicide, cognitive, waimai, ewect_usual, ewect_epidemic]
+    models: [tfidf-lr, bert-base-chinese, bert-wwm-ext, chinese-mentalbert, matcha-random, matcha-depression,
+             matcha-multidisorder]
+    reported:
+      - name: "Paper: BERT"
+        source: Zhai et al. (2024a), Tables 3-4
+        ours: bert-base-chinese
+        values: {suicide: 83.46, cognitive: 73.06, waimai: 87.58, ewect_usual: 74.76, ewect_epidemic: 64.12}
+      - name: "Paper: Chinese-BERT-wwm-ext"
+        source: Zhai et al. (2024a), Tables 3-4 (Table 4 calls it Chinese-BERT-wwm)
+        ours: bert-wwm-ext
+        values: {suicide: 84.39, cognitive: 72.66, waimai: 87.44, ewect_usual: 74.85, ewect_epidemic: 63.82}
+      - name: "Paper: Chinese MentalBERT (guided)"
+        source: Zhai et al. (2024a), Tables 3-4
+        ours: chinese-mentalbert
+        values: {suicide: 86.15, cognitive: 74.75, waimai: 89.70, ewect_usual: 76.74, ewect_epidemic: 67.77}
+      - name: "MentalGLM paper: Chinese MentalBERT"
+        source: Zhai et al. (2024b), Table 3 (its own splits of SOS-HL-1K and SocialCD-3K)
+        ours: chinese-mentalbert
+        values: {suicide: 81.30, cognitive: 74.91}
+  - name: mentalglm
+    title: MentalGLM tasks (F1; Suicide = SOS-HL-1K binary, Cognitive = SocialCD-3K micro)
+    tasks: [suicide, cognitive]
+    models: [mentalglm-chat-fp16, mentalglm-chat-fp16-bs1, mentalglm-chat-4bit]
+    reported:
+      - name: "Paper: MentalGLM-chat"
+        source: Zhai et al. (2024b), Table 3
+        ours: mentalglm-chat-fp16
+        values: {suicide: 85.12, cognitive: 71.04}
+  - name: roberta
+    title: RoBERTa task (macro-F1 on the Reddit posts)
+    tasks: [reddit_posts]
+    models: [roberta-base]
+    reported:
+      - name: "Paper: RoBERTa (posts)"
+        source: Murarka et al. (2021)
+        ours: roberta-base
+        values: {reddit_posts: 86.0}

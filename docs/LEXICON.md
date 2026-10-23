@@ -32,7 +32,7 @@ posts, user IDs or timestamps.
 | Measure | Value |
 |---|---|
 | Word level (n = 4,269): agreement / Cohen's κ | 78.3% / 0.43 |
-| (Disorder, word) level (n = 9,307): agreement / Cohen's κ | 82.4% / 0.56 |
+| (Disorder, word) level (n = 9,307): agreement / Cohen's κ | 82.4% / 0.55 |
 | Annotator A's words also kept by B | 520 / 526 (98.9%) |
 | Same category among shared words | 86.5% |
 

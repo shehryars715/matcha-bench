@@ -108,8 +108,9 @@ same sizes. Full tables: `outputs/results/paper/sanity_*.md`.
   derived post-level files or lexicons are included here.
 - Python 3.10+ and `pip install -e ".[dev,llm]"` (or `pip install -r requirements.txt`, plus
   `peft bitsandbytes` for MentalGLM). The CPU steps were run on Windows (Python 3.14,
-  transformers 5.9); the GPU steps on Kaggle's GPU image (October 2026), with
-  `transformers>=4.46`, `peft>=0.13`, `bitsandbytes>=0.45` installed per session.
+  transformers 5.9); the GPU steps on Kaggle's GPU image of October 2026 (Python 3.13, torch 2.11,
+  transformers 5.16, peft 0.20, bitsandbytes 0.50). Exact image digests and a full package list:
+  [`docs/environment/`](docs/environment/README.md).
 - One NVIDIA GPU with 16 GB (a T4 is enough for everything; DAPT ran on two).
 - For the optional multi-disorder lexicon only: a DeepSeek API key in `.env` (about $0.26).
 

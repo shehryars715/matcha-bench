@@ -65,7 +65,7 @@ The checkpoint is converted to the native transformers `glm` format
 | Tasks | trained together | one adapter per task | matches the BERT protocol |
 | Epochs | 10 | 2 | **HW**: ~5× the GPU time |
 | Precision | fp16 LoRA | 4-bit QLoRA | **HW**: a 9B model in fp16 needs a ≥ 24–32 GB GPU; on the paper's own tasks 4-bit scores 84.13 / 67.25 vs fp16 82.95 / 69.56 |
-| Input length | 1,024 tokens | 128 characters per post, 512 per timeline | the same input as the BERT models |
+| Input length | 1,024 tokens | 128 characters per post, 512 per timeline | about what the BERT models see (they cut at 128 / 512 tokens, ~1 token per Chinese character) |
 | `disorder_post` seed 44 | — | diverged twice (NaN in fp16 activations at step ~175–220; the guard stopped it) → seed 45 | objective trigger fixed before the rerun, not chosen by score; both attempts are reported |
 | Zero-shot rows | GLM-4-plus, GPT-3.5, GPT-4 | MentalGLM-chat and GLM-4-9B-chat, same prompt, 4-bit, greedy, first sentence parsed, unparsed = wrong | local models only (DUA); answer cap 24 tokens for MentalGLM-chat, 96 for GLM-4-9B-chat, whose answers open with a preamble |
 

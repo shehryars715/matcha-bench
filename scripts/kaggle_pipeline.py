@@ -63,7 +63,6 @@ def kernel_status(kernel: str) -> str:
 
 
 def start(args) -> None:
-    cfg = load_config(resolve_path(args.pipeline))
     state = load_state()
     sources = []
     if state["runs"]:
@@ -79,6 +78,12 @@ def start(args) -> None:
             last = good[-1] if good else None
         if last:
             sources = [last]
+    if args.pipeline is None:
+        # Reuse the pipeline of the session being resumed (else the lane's last one).
+        by_ref = {ref(r): r for r in state["runs"]}
+        prev = by_ref.get(sources[0]) if sources else (state["runs"][-1] if state["runs"] else None)
+        args.pipeline = (prev or {}).get("pipeline") or "configs/pipeline.yaml"
+    cfg = load_config(resolve_path(args.pipeline))
     n = len(state["runs"]) + 1
     slug = f"{RUN_PREFIX}{n:03d}"
     budget = args.budget_hours or cfg["budget_hours"]
@@ -205,8 +210,9 @@ def account(args) -> None:
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("action", choices=["start", "status", "log", "results", "account", "hf-upload"])
-    ap.add_argument("--pipeline", "--config", dest="pipeline", default="configs/pipeline.yaml",
-                    help="start: pipeline config the session runs (configs/pipeline_llm.yaml for the LLM baseline)")
+    ap.add_argument("--pipeline", "--config", dest="pipeline", default=None,
+                    help="start: pipeline config the session runs (default: the resumed session's, "
+                         "else configs/pipeline.yaml)")
     ap.add_argument("--budget-hours", type=float, help="start: session cap instead of the config's budget_hours")
     ap.add_argument("--margin-minutes", type=float,
                     help="start: stop this long before the cap instead of the config's safety_margin_minutes")

@@ -84,6 +84,7 @@ models:
     path: llm/zeroshot/{task}/{tag}/seed{seed}
     tag: mentalglm-chat
     seeds: [0]
+    match: {hyperparameters.max_new_tokens: 24}
   glm-4-9b-chat-zs:
     name: GLM-4-9B-chat, zero-shot (control)
     group: Zero-shot

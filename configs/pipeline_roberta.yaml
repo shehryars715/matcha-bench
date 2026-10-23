@@ -1,6 +1,6 @@
 # RoBERTa baseline (Murarka et al., LOUHI 2021) on the four core MATCHA tasks, then its sanity check on
 # the paper's own Reddit data. Its own lane of sessions:
-#   python scripts/kaggle_pipeline.py start --lane roberta --pipeline configs/pipeline_roberta.yaml
+#   python scripts/kaggle/kaggle_pipeline.py start --lane roberta --pipeline configs/pipeline_roberta.yaml
 # roberta-wwm-ext is the size of bert-wwm-ext, whose measured single-GPU epochs (two runs sharing a
 # session) took ~2.9 min on disorder_post(+masked) and user_multiclass_masked and ~1.0 min on
 # user_binary_masked. At the paper's 10 epochs: ~30/30/30/10 min per run, 12 runs ≈ 2.5 h on two GPUs;

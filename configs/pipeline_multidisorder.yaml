@@ -1,0 +1,23 @@
+# Optional: the Chinese MentalBERT recipe with the multi-disorder lexicon (docs/LEXICON.md) instead of
+# the depression lexicon. Needs lexicons/lexicon_multidisorder.txt, built from two LLM annotators'
+# word lists (notebooks/02_lexicon.ipynb). Run after configs/pipeline_mentalbert.yaml, whose
+# matcha-random run it is compared with. Not part of the MATCHA baselines: it was run on the
+# sanity-check tasks only (DAPT 3.6 h on two T4s).
+budget_hours: 9.0
+safety_margin_minutes: 30
+finetune_one_run_per_gpu: true
+
+stages:
+  - name: dapt-multidisorder
+    type: dapt
+    config: configs/dapt/multidisorder.yaml
+  - name: finetune-mentalbert-multidisorder
+    type: finetune
+    config: configs/finetune.yaml
+    tasks: [suicide, cognitive, waimai, ewect_epidemic]
+    models: [matcha-multidisorder]
+    minutes_per_run: {default: 20}
+  - name: summary
+    type: summary
+    compare:
+      - [matcha-multidisorder, matcha-random]

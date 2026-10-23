@@ -12,3 +12,8 @@ defaults:
   # still stops at the first "。", and only that sentence is parsed, as in MentalGLM's evaluation).
   # MentalGLM-chat's run-004 answers (cap 24) had at most 12 cut off per task.
   max_new_tokens: 96
+
+# The reported MentalGLM-chat zero-shot rows were generated with the fine-tuned runs' 24-token cap
+# (sessions 1-run-004/005); kept so a rerun reproduces them. GLM-4-9B-chat uses the 96 above.
+model_overrides:
+  mentalglm-chat: {max_new_tokens: 24}

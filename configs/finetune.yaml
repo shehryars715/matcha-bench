@@ -2,7 +2,7 @@
 # best-dev checkpoint evaluated on test). Every run is repeated over `seeds`.
 # batch_size is per GPU. A run that sees 2 GPUs (DataParallel) has an effective batch of 32; the
 # Chinese MentalBERT sanity-check runs on Kaggle did. The MATCHA runs use one GPU each
-# (finetune_one_run_per_gpu in configs/pipeline.yaml), so 16. metrics.json records the value.
+# (finetune_one_run_per_gpu in configs/pipeline_mentalbert.yaml), so 16. metrics.json records the value.
 task_root: data/tasks
 output_root: outputs/finetune
 seeds: [42, 43, 44]

@@ -1,5 +1,5 @@
 # LLM baseline pipeline (stage 1b, MentalGLM on MATCHA), run in Kaggle sessions like the BERT one:
-#   python scripts/kaggle_pipeline.py start --pipeline configs/pipeline_llm.yaml
+#   python scripts/kaggle/kaggle_pipeline.py start --pipeline configs/kaggle/pipeline_llm.yaml
 # Settings for the models, prompts and LoRA training are in configs/llm.yaml.
 #
 # Sessions 5-6 ran the sanity check and the timing probes (both are skipped once done). The probes

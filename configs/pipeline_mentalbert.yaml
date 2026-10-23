@@ -1,0 +1,55 @@
+# The Chinese MentalBERT baseline end to end (scripts/run_pipeline.py, the default config):
+# DAPT on MATCHA training users (random masking as the control, then the depression lexicon), the
+# sanity check on the paper's own tasks, fine-tuning on the four MATCHA tasks, TF-IDF, summary.
+# Every stage skips finished work, and an unfinished DAPT run resumes from its last checkpoint.
+# The optional multi-disorder lexicon variant is in configs/pipeline_multidisorder.yaml.
+#
+# Measured on Kaggle T4s: DAPT 3.6 h per variant on two GPUs (6,594 steps at ~1.95 s); a MATCHA run on
+# one GPU ~20 min (disorder_post, _masked), 6 min (user_binary_masked), 17 min (user_multiclass_masked).
+budget_hours: 9.0
+safety_margin_minutes: 30        # with a deadline: stop this long before it so outputs are saved
+# Fine-tune one (task, model, seed) per GPU at the same time, each with a true batch of 16. The
+# reported sanity-check runs (finetune-mentalbert) were made before this was turned on, with one run
+# across two GPUs (DataParallel, effective batch 32); metrics.json records effective_batch_size.
+finetune_one_run_per_gpu: true
+
+stages:
+  - name: preflight              # tiny CPU/GPU check (~2 min), skipped once it has passed
+    type: preflight
+  - name: dapt-random
+    type: dapt
+    config: configs/dapt/random.yaml
+  - name: dapt-depression
+    type: dapt
+    config: configs/dapt/depression.yaml
+  # Sanity check: four of the Chinese MentalBERT paper's evaluation tasks, every model and seed.
+  # ewect_usual was stopped after 7 of 18 runs to save GPU time (append it here to finish it; ~32 min
+  # per run on two GPUs).
+  - name: finetune-mentalbert
+    type: finetune
+    config: configs/finetune.yaml
+    tasks: [suicide, cognitive, waimai, ewect_epidemic]
+    models: [bert-wwm-ext, matcha-random, matcha-depression, chinese-mentalbert, bert-base-chinese]
+    # minutes to reserve before starting a run when there is a deadline; unlisted tasks use default
+    minutes_per_run: {default: 20, ewect_usual: 40}
+  # The MATCHA baselines: the core four tasks. bert-base-chinese was dropped here to save GPU time
+  # (it trails bert-wwm-ext on every sanity task). Also built, append to run them:
+  #   matcha_ip_post, matcha_user_binary, matcha_user_multiclass (the unmasked user-level twins)
+  - name: finetune-matcha
+    type: finetune
+    config: configs/finetune.yaml
+    tasks: [matcha_disorder_post, matcha_disorder_post_masked,
+            matcha_user_binary_masked, matcha_user_multiclass_masked]
+    models: [bert-wwm-ext, matcha-random, matcha-depression, chinese-mentalbert]
+    minutes_per_run: {default: 15, matcha_disorder_post: 30, matcha_disorder_post_masked: 30,
+                      matcha_user_multiclass_masked: 25, matcha_ip_post: 50, matcha_user_multiclass: 25}
+  - name: tfidf
+    type: tfidf
+  - name: summary
+    type: summary
+    # quick one-sided 1,000-resample tests per seed; the paper's tables and the 10,000-resample
+    # bootstrap over every model pair come from scripts/make_tables.py
+    compare:
+      - [matcha-random, bert-wwm-ext]             # corpus effect: does pre-training on MATCHA help?
+      - [matcha-depression, matcha-random]        # lexicon effect: the Chinese MentalBERT claim
+      - [matcha-depression, chinese-mentalbert]   # MATCHA corpus vs the published model's corpus

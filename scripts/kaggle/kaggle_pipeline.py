@@ -1,22 +1,22 @@
 """One-command Kaggle sessions for the full pipeline (pre-training -> fine-tuning -> results).
 
-    python scripts/kaggle_pipeline.py start      # start the next session (resumes the last one)
-    python scripts/kaggle_pipeline.py start --budget-hours 5.5   # shorter session (little GPU quota left)
-    python scripts/kaggle_pipeline.py start --pipeline configs/pipeline_llm.yaml   # the LLM baseline
-    python scripts/kaggle_pipeline.py status     # is the current session queued / running / done?
-    python scripts/kaggle_pipeline.py log        # what each session did (pipeline_log.jsonl)
-    python scripts/kaggle_pipeline.py results    # download result tables and metrics
+    python scripts/kaggle/kaggle_pipeline.py start      # start the next session (resumes the last one)
+    python scripts/kaggle/kaggle_pipeline.py start --budget-hours 5.5   # shorter session (little GPU quota left)
+    python scripts/kaggle/kaggle_pipeline.py start --pipeline configs/pipeline_mentalglm.yaml   # the LLM baseline
+    python scripts/kaggle/kaggle_pipeline.py status     # is the current session queued / running / done?
+    python scripts/kaggle/kaggle_pipeline.py log        # what each session did (pipeline_log.jsonl)
+    python scripts/kaggle/kaggle_pipeline.py results    # download result tables and metrics
 
     # switch the next sessions to another Kaggle account (FILE holds its access token); it reads
     # the dataset and the earlier sessions from the accounts that own them, which must share both
-    python scripts/kaggle_pipeline.py account --token-file FILE --data-owner OLD_USERNAME
+    python scripts/kaggle/kaggle_pipeline.py account --token-file FILE --data-owner OLD_USERNAME
 
     # a second, independent chain of sessions (e.g. on another account, with its own share of the
     # runs): every action takes --lane; its sessions are matcha-bench-<lane>-run-001, -002, ...
-    python scripts/kaggle_pipeline.py start --lane 2 --pipeline configs/pipeline_llm_full_2.yaml
+    python scripts/kaggle/kaggle_pipeline.py start --lane 2 --pipeline configs/kaggle/pipeline_llm_full_2.yaml
 
 Each session (per lane) is a new Kaggle job (matcha-bench-run-001, -002, ...) with a hard time cap
-(configs/pipeline.yaml: budget_hours). It attaches the previous session's output, restores
+(the pipeline config's budget_hours). It attaches the previous session's output, restores
 outputs/ (checkpoints, trained models, finished runs) and continues with scripts/run_pipeline.py,
 which stops cleanly before the cap. Session history is kept in outputs/kaggle/pipeline_state.json
 (outputs/kaggle/pipeline_state_<lane>.json for a lane).
@@ -82,7 +82,7 @@ def start(args) -> None:
         # Reuse the pipeline of the session being resumed (else the lane's last one).
         by_ref = {ref(r): r for r in state["runs"]}
         prev = by_ref.get(sources[0]) if sources else (state["runs"][-1] if state["runs"] else None)
-        args.pipeline = (prev or {}).get("pipeline") or "configs/pipeline.yaml"
+        args.pipeline = (prev or {}).get("pipeline") or "configs/pipeline_mentalbert.yaml"
     cfg = load_config(resolve_path(args.pipeline))
     n = len(state["runs"]) + 1
     slug = f"{RUN_PREFIX}{n:03d}"
@@ -103,7 +103,7 @@ def start(args) -> None:
 def current_run() -> dict:
     state = load_state()
     if not state["runs"]:
-        raise SystemExit("No sessions yet. Run: python scripts/kaggle_pipeline.py start")
+        raise SystemExit("No sessions yet. Run: python scripts/kaggle/kaggle_pipeline.py start")
     return state["runs"][-1]
 
 
@@ -212,7 +212,7 @@ def main():
     ap.add_argument("action", choices=["start", "status", "log", "results", "account", "hf-upload"])
     ap.add_argument("--pipeline", "--config", dest="pipeline", default=None,
                     help="start: pipeline config the session runs (default: the resumed session's, "
-                         "else configs/pipeline.yaml)")
+                         "else configs/pipeline_mentalbert.yaml)")
     ap.add_argument("--budget-hours", type=float, help="start: session cap instead of the config's budget_hours")
     ap.add_argument("--margin-minutes", type=float,
                     help="start: stop this long before the cap instead of the config's safety_margin_minutes")

@@ -3,9 +3,11 @@
     python scripts/run_pipeline.py --deadline <unix-seconds>      # used by Kaggle jobs
     python scripts/run_pipeline.py --budget-hours 9                # deadline = now + budget - margin
     python scripts/run_pipeline.py --no-limit                       # local GPU: run until done
+    python scripts/run_pipeline.py --no-limit --config configs/pipeline_mentalglm.yaml   # one baseline
     python scripts/run_pipeline.py --no-limit --dapt-set training.per_device_train_batch_size=16         --finetune-set defaults.batch_size=8 defaults.grad_accum=2   # smaller GPUs (same effective batch)
 
-Stages (configs/pipeline.yaml) run in order:
+Pipeline configs: configs/pipeline_mentalbert.yaml (default), configs/pipeline_mentalglm.yaml,
+configs/pipeline_roberta.yaml. Stages run in order:
 * dapt: skipped if outputs/dapt/<variant>/final exists; otherwise trains (resuming from the last
   checkpoint) until done or the deadline, then the pipeline stops for this session;
 * finetune (one stage per task group, each with its own tasks and models): one subprocess per
@@ -15,7 +17,7 @@ Stages (configs/pipeline.yaml) run in order:
   otherwise runs go one at a time across all GPUs;
 * tfidf, summary: quick CPU steps once everything else is done. The summary writes the results
   tables and one paired-bootstrap comparison per model pair listed under `compare`.
-LLM baseline (configs/pipeline_llm.yaml):
+LLM baseline (configs/pipeline_mentalglm.yaml):
 * pip: installs extra packages (peft, bitsandbytes) into the session;
 * llm_sanity: scripts/run_llm_eval.py, the released MentalGLM on its own test sets;
 * llm_probe: times a few LoRA training steps per task (scripts/run_llm_finetune.py --probe-steps);
@@ -36,7 +38,7 @@ from matcha_bench.config import REPO_ROOT, load_config, resolve_path
 
 PY = sys.executable
 EXTRA = {"dapt": [], "finetune": []}  # extra --set overrides passed to the step scripts
-ONE_RUN_PER_GPU = False               # set from configs/pipeline.yaml in main()
+ONE_RUN_PER_GPU = False               # set from the pipeline config in main()
 POLL_SECONDS = 10                     # how often parallel fine-tuning runs are checked
 
 
@@ -269,7 +271,7 @@ STAGES = {
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--config", default="configs/pipeline.yaml")
+    ap.add_argument("--config", default="configs/pipeline_mentalbert.yaml")
     ap.add_argument("--deadline", type=float, help="unix time by which to stop (already includes the margin)")
     ap.add_argument("--budget-hours", type=float, help="override the config budget (from now)")
     ap.add_argument("--margin-minutes", type=float, help="override the config safety_margin_minutes")

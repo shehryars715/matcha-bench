@@ -1,18 +1,18 @@
 """Run pipeline steps on Kaggle GPUs from the command line (uses the `kaggle` CLI and ~/.kaggle/kaggle.json).
 
     # once: upload the data zip as a private Kaggle dataset
-    python scripts/kaggle_job.py upload-data --zip ../matcha-bench-data.zip
+    python scripts/kaggle/kaggle_job.py upload-data --zip ../matcha-bench-data.zip
 
     # push a GPU job (runs headless, up to 12 h); each --cmd runs from the repo root
-    python scripts/kaggle_job.py push --name smoke --cmd "python scripts/run_dapt.py --config configs/dapt/smoke.yaml"
-    python scripts/kaggle_job.py push --name dapt-random --cmd "python scripts/run_dapt.py --config configs/dapt/random.yaml"
+    python scripts/kaggle/kaggle_job.py push --name smoke --cmd "python scripts/run_dapt.py --config configs/dapt/smoke.yaml"
+    python scripts/kaggle/kaggle_job.py push --name dapt-random --cmd "python scripts/run_dapt.py --config configs/dapt/random.yaml"
 
     # fine-tune using the models produced by earlier jobs (their outputs are attached and merged)
-    python scripts/kaggle_job.py push --name ft-mentalbert --inputs-from dapt-random dapt-depression \\
+    python scripts/kaggle/kaggle_job.py push --name ft-mentalbert --inputs-from dapt-random dapt-depression \\
         --cmd "python scripts/run_finetune.py --tasks suicide cognitive --models all"
 
-    python scripts/kaggle_job.py status --name smoke
-    python scripts/kaggle_job.py output --name smoke          # -> outputs/kaggle/smoke/
+    python scripts/kaggle/kaggle_job.py status --name smoke
+    python scripts/kaggle/kaggle_job.py output --name smoke          # -> outputs/kaggle/smoke/
 
 Each job clones the public GitHub repo, links the dataset's data/ and lexicons/, copies outputs/
 from any --inputs-from jobs (so DAPT resumes and fine-tuning finds the models), runs the
@@ -106,7 +106,7 @@ def username() -> str:
 def upload_data(args) -> None:
     zip_path = Path(args.zip).resolve()
     if not zip_path.exists():
-        raise SystemExit(f"{zip_path} not found; run scripts/pack_kaggle_data.py first")
+        raise SystemExit(f"{zip_path} not found; run scripts/kaggle/pack_kaggle_data.py first")
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         meta = {"title": DATASET_SLUG, "id": f"{username()}/{DATASET_SLUG}", "licenses": [{"name": "other"}]}

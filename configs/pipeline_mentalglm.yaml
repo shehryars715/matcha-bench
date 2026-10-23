@@ -1,0 +1,52 @@
+# The MentalGLM baseline end to end (scripts/run_pipeline.py --config configs/pipeline_mentalglm.yaml).
+# Model settings: configs/llm.yaml (fine-tuning) and configs/llm_zeroshot.yaml (zero-shot rows).
+#
+# Measured on one T4 16 GB (4-bit QLoRA, batch 4 x 8): a disorder_post(+masked) run ~11.3 h
+# (2 x 4.2 h training + 2 x 0.85 h dev + 1.2 h test), a user_multiclass_masked run ~8 h, a
+# user_binary_masked run ~2.5 h; the sanity check ~1 h; zero-shot ~2.7 h per model for all 4 tasks.
+# The 12 fine-tuning runs come to ~100 GPU-hours. minutes_per_run only matters with a deadline
+# (--budget-hours); a run that does not finish in time resumes from its last epoch next time.
+# Our runs were made in Kaggle sessions split over several accounts (configs/kaggle/).
+
+budget_hours: 9.0
+safety_margin_minutes: 30
+finetune_one_run_per_gpu: true   # one 4-bit LoRA run per GPU
+
+stages:
+  - name: llm-packages
+    type: pip
+    packages: ["peft>=0.13", "bitsandbytes>=0.45", "transformers>=4.46"]
+  - name: llm-sanity              # the released MentalGLM-chat on the paper's own test sets
+    type: llm_sanity
+    config: configs/llm.yaml
+    minutes: 60
+  - name: finetune-llm-binary
+    type: finetune
+    script: scripts/run_llm_finetune.py
+    config: configs/llm.yaml
+    prepare: [scripts/run_llm_finetune.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, --prepare-only]
+    tasks: [matcha_user_binary_masked]
+    # `mentalglm-chat` caps training at 4,000 examples and the dev check at 500; this task has 2,392
+    # training users and 358 dev users, so it trains on all of them and picks the epoch on the full dev
+    # set, like `mentalglm-chat-full` on the other tasks.
+    models: [mentalglm-chat]
+    minutes_per_run: {default: 160}
+  - name: finetune-llm-full
+    type: finetune
+    script: scripts/run_llm_finetune.py
+    config: configs/llm.yaml
+    prepare: [scripts/run_llm_finetune.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, --prepare-only]
+    tasks: [matcha_disorder_post, matcha_disorder_post_masked, matcha_user_multiclass_masked]
+    models: [mentalglm-chat-full]
+    # disorder_post seed 44 diverged twice in fp16 (the NaN guard stopped it; diverged.json); by the
+    # rule fixed in advance, the cell uses the next unused seed, 45.
+    seeds: {matcha_disorder_post: [42, 43, 45], default: [42, 43, 44]}
+    minutes_per_run: {default: 700, matcha_user_multiclass_masked: 500}
+  - name: zeroshot-llm
+    type: finetune
+    script: scripts/run_llm_zeroshot.py
+    config: configs/llm_zeroshot.yaml
+    prepare: [scripts/run_llm_zeroshot.py, --tasks, matcha_user_binary_masked, --models, glm-4-9b-chat, --prepare-only]
+    tasks: [matcha_disorder_post, matcha_disorder_post_masked, matcha_user_multiclass_masked, matcha_user_binary_masked]
+    models: [mentalglm-chat, glm-4-9b-chat]
+    minutes_per_run: {default: 200, matcha_user_multiclass_masked: 50, matcha_user_binary_masked: 20}

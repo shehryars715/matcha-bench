@@ -1,5 +1,5 @@
 # Final MentalGLM baseline, lane 3 (a fourth account; takes over the last two runs of lane 2):
-#   python scripts/kaggle_pipeline.py start --lane 3 --pipeline configs/pipeline_llm_full_3.yaml
+#   python scripts/kaggle/kaggle_pipeline.py start --lane 3 --pipeline configs/kaggle/pipeline_llm_full_3.yaml
 # Tag mentalglm-chat-full (configs/llm.yaml): all training data, best epoch on the full dev set.
 # This lane: the third disorder_post seed and disorder_post_masked seed 43.
 # Rule for diverged runs: a run whose loss stays non-finite (it stops with diverged.json) is restarted

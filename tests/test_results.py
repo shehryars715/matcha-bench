@@ -79,3 +79,13 @@ def test_check_run_catches_a_wrong_score(tmp_path):
     run = find_run([tmp_path], "m", {"path": "finetune/{task}/{tag}/seed{seed}"}, "t", 1)
     with pytest.raises(ValueError, match="!= metrics.json"):
         check_run(run)
+
+
+def test_notebook_step_streams_output_and_raises_on_failure(capsys):
+    from matcha_bench.notebook import check, step
+
+    step("-c", "print('hello from a step')")
+    assert "hello from a step" in capsys.readouterr().out
+    with pytest.raises(RuntimeError, match="exit code 3"):
+        step("-c", "import sys; sys.exit(3)")
+    assert check("n", 5, 5) and not check("f1", 80.0, 81.3, tol=1.0)

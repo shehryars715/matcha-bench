@@ -355,3 +355,105 @@ def test_zeroshot_scores_the_full_test_set_with_the_untrained_model(tmp_path):
     assert np.load(out / "test_predictions.npz")["labels"].tolist() == [0, 1, 0, 1, 0]
     assert not (out / "best_adapter").exists()
     assert run() is None  # finished runs are skipped
+
+
+def test_label_tokens_are_the_first_tokens_after_the_shared_answer_prefix():
+    from matcha_bench.llm.prompts import TaskPrompt
+    from matcha_bench.llm.score import answer_tokens
+
+    class CharTokenizer:  # one token per character
+        def encode(self, text, add_special_tokens=False):
+            return [ord(c) for c in text]
+
+    prefix, first = answer_tokens(CharTokenizer(), get_prompt("matcha_disorder_post"))
+    assert "".join(map(chr, prefix)) == "\n这篇帖子来自"
+    assert "".join(map(chr, first)) == "注孤双抑广强精"
+    with pytest.raises(ValueError, match="share their first token"):
+        answer_tokens(CharTokenizer(), TaskPrompt("{text}", ["抑郁症", "抑郁发作", "焦虑症"], "来自{label}。"))
+    with pytest.raises(ValueError):
+        answer_tokens(CharTokenizer(), get_prompt("cognitive"))  # multi-label
+
+
+def test_label_logprobs_equal_an_unpadded_forward_pass():
+    from transformers import GlmConfig, GlmForCausalLM
+
+    from matcha_bench.llm.score import label_logprobs
+
+    torch.manual_seed(0)
+    model = GlmForCausalLM(GlmConfig(vocab_size=50, hidden_size=32, intermediate_size=64, num_hidden_layers=2,
+                                     num_attention_heads=4, num_key_value_heads=2, head_dim=8, pad_token_id=0)).eval()
+    seqs, labels = [[5, 6, 7], [8, 9, 10, 11, 12, 13, 14], [15], [16, 17]], [20, 21, 22]
+    got = label_logprobs(model, seqs, labels, pad_id=0, batch_size=3)  # left-padded batches of 3 and 1
+    for seq, row in zip(seqs, got):
+        with torch.no_grad():
+            ref = torch.log_softmax(model(torch.tensor([seq])).logits[0, -1].float(), -1)[labels]
+        np.testing.assert_allclose(row, ref.numpy(), atol=1e-5)
+
+
+def test_scores_are_checked_against_the_generated_answers_and_resume(tmp_path, monkeypatch):
+    """A run stops if its test arg-max disagrees with the generated answers; otherwise every split is
+    scored, a split cut off mid-way resumes from its last chunk, and a finished run is skipped."""
+    import json
+
+    pytest.importorskip("peft")
+    from peft import LoraConfig, get_peft_model
+    from transformers import AutoTokenizer, GlmConfig, GlmForCausalLM
+
+    from matcha_bench.llm import score
+
+    try:
+        tok = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct", local_files_only=True)
+    except Exception:
+        pytest.skip("needs a cached chat tokenizer")
+    model_dir = tmp_path / "model"
+    torch.manual_seed(0)
+    GlmForCausalLM(GlmConfig(vocab_size=len(tok), hidden_size=16, intermediate_size=32, num_hidden_layers=1,
+                             num_attention_heads=2, num_key_value_heads=1, head_dim=8,
+                             pad_token_id=tok.pad_token_id)).save_pretrained(model_dir)
+    tok.save_pretrained(model_dir)
+    task = "matcha_user_binary_masked"
+    task_dir = tmp_path / "tasks" / task
+    task_dir.mkdir(parents=True)
+    (task_dir / "meta.json").write_text(json.dumps({"problem_type": "single_label_classification",
+                                                    "label_names": ["control", "disorder"], "average": "macro"}))
+    for split, n in [("train", 7), ("dev", 2), ("test", 5)]:
+        rows = [{"id": f"{split}{i}", "text": f"今天{i}天气", "label": i % 2} for i in range(n)]
+        (task_dir / f"{split}.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+    run_dir = tmp_path / "finetune" / task / "m" / "seed42"
+    lora = get_peft_model(GlmForCausalLM.from_pretrained(model_dir),
+                          LoraConfig(task_type="CAUSAL_LM", r=2, lora_alpha=4, target_modules=["q_proj", "v_proj"]))
+    lora.save_pretrained(run_dir / "best_adapter")
+    (run_dir / "metrics.json").write_text(json.dumps({"test": {"f1": 0.5}}))
+    labels = np.arange(5) % 2
+    np.savez(run_dir / "test_predictions.npz", preds=np.full(5, -1), labels=labels, indices=np.arange(5))
+    hp = {"quant": "fp32", "max_text_chars": 20, "score_batch_size": 2, "save_every": 3, "min_agreement": 0.98}
+    out = tmp_path / "scores" / task / "m" / "seed42"
+    run = lambda: score.run_llm_scores(tmp_path / "tasks", task, str(model_dir), "m", tmp_path / "finetune",
+                                       tmp_path / "scores", 42, hp)
+
+    with pytest.raises(RuntimeError, match="agree"):  # every generated answer unparsed: no agreement
+        run()
+    assert (out / "check_failed.json").exists() and not (out / "dev_scores.npz").exists()
+
+    test_logp = np.load(out / "test_scores.npz")["logp"]
+    np.savez(run_dir / "test_predictions.npz", preds=test_logp.argmax(1), labels=labels, indices=np.arange(5))
+    real, calls = score.label_logprobs, []
+
+    def cut_off_on_the_third_chunk(*a, **kw):  # dev = 1 chunk, train = 3 chunks (7 items, 3 per chunk)
+        calls.append(1)
+        if len(calls) == 3:
+            raise SystemExit("deadline")
+        return real(*a, **kw)
+
+    monkeypatch.setattr(score, "label_logprobs", cut_off_on_the_third_chunk)
+    with pytest.raises(SystemExit):
+        run()
+    assert np.load(out / "train_scores.partial.npz")["logp"].shape == (3, 2)
+    monkeypatch.setattr(score, "label_logprobs", real)
+    record = run()
+    assert record["splits"]["test"]["agreement_with_generated"] == 1.0
+    assert set(record["splits"]) == {"test", "dev", "train"} and len(record["label_tokens"]) == 2
+    train = np.load(out / "train_scores.npz")
+    assert train["logp"].shape == (7, 2) and train["labels"].tolist() == (np.arange(7) % 2).tolist()
+    assert not list(out.glob("*.partial.npz"))
+    assert run() is None  # finished runs are skipped

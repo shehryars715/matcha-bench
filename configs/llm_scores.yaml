@@ -1,0 +1,16 @@
+# Label probabilities of the fine-tuned MentalGLM runs (scripts/run_llm_scores.py): one forward pass
+# per item reads the probability of each label at the point where the answer names it. Prompts,
+# inputs (characters kept per task) and 4-bit weights come from configs/llm.yaml, as in the runs.
+base: llm.yaml
+output_root: outputs/llm/scores          # <task>/<tag>/seed<k>/{test,dev,train}_scores.npz + metrics.json
+adapter_root: outputs/llm/finetune       # the fine-tuning runs whose best_adapter is scored
+splits: [test, dev, train]               # test first: its arg-max is checked against the generated answers
+defaults:
+  score_batch_size: 32
+  save_every: 2048                       # items per saved chunk (a session cap loses at most one)
+  min_agreement: 0.98                    # share of test items whose arg-max equals the generated label
+  limit: null                            # score only the first n items of each split (quick checks)
+task_overrides:
+  # timelines are ~4x as long as posts
+  matcha_user_binary_masked: {score_batch_size: 16}
+  matcha_user_multiclass_masked: {score_batch_size: 16}

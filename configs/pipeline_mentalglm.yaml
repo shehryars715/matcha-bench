@@ -42,6 +42,25 @@ stages:
     # rule fixed in advance, the cell uses the next unused seed, 45.
     seeds: {matcha_disorder_post: [42, 43, 45], default: [42, 43, 44]}
     minutes_per_run: {default: 700, matcha_user_multiclass_masked: 500}
+  # label probabilities of the fine-tuned runs on test, dev and train (configs/llm_scores.yaml): one
+  # forward pass per item, checked against each run's generated test answers
+  - name: llm-scores-binary
+    type: finetune
+    script: scripts/run_llm_scores.py
+    config: configs/llm_scores.yaml
+    prepare: [scripts/run_llm_scores.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, --prepare-only]
+    tasks: [matcha_user_binary_masked]
+    models: [mentalglm-chat]
+    minutes_per_run: {default: 20}
+  - name: llm-scores-full
+    type: finetune
+    script: scripts/run_llm_scores.py
+    config: configs/llm_scores.yaml
+    prepare: [scripts/run_llm_scores.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat-full, --prepare-only]
+    tasks: [matcha_disorder_post, matcha_disorder_post_masked, matcha_user_multiclass_masked]
+    models: [mentalglm-chat-full]
+    seeds: {matcha_disorder_post: [42, 43, 45], default: [42, 43, 44]}
+    minutes_per_run: {default: 20}
   - name: zeroshot-llm
     type: finetune
     script: scripts/run_llm_zeroshot.py

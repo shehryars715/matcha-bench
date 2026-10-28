@@ -159,9 +159,9 @@ def run_finetune(
         preds = predictions_from_logits(logits, problem_type)
         labels = np.asarray(datasets[split].labels).astype(int)
         results[split] = classification_metrics(labels, preds, problem_type, meta["average"], label_names)
-        if split == "test":
-            out_dir.mkdir(parents=True, exist_ok=True)
-            np.savez_compressed(out_dir / "test_predictions.npz", logits=logits, preds=preds, labels=labels)
+        # dev predictions too: a decision rule (e.g. a class-prior correction) may only be tuned on dev
+        out_dir.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(out_dir / f"{split}_predictions.npz", logits=logits, preds=preds, labels=labels)
 
     record = {
         "task": task, "model_tag": model_tag, "model_path": str(model_path), "seed": seed,

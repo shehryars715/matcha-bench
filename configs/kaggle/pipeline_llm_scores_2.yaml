@@ -10,6 +10,15 @@ stages:
   - name: llm-packages
     type: pip
     packages: ["peft>=0.13", "bitsandbytes>=0.45", "transformers>=4.46"]
+  - name: llm-scores-check        # 500 test items per task; a failure ends the session here
+    type: finetune
+    script: scripts/run_llm_scores.py
+    config: configs/kaggle/llm_scores_probe.yaml
+    prepare: [scripts/run_llm_scores.py, --tasks, matcha_disorder_post, --models, mentalglm-chat-full, --prepare-only]
+    tasks: [matcha_disorder_post, matcha_disorder_post_masked]
+    models: [mentalglm-chat-full]
+    seeds: {matcha_disorder_post: [42], matcha_disorder_post_masked: [42]}
+    minutes_per_run: {default: 15}
   - name: llm-scores
     type: finetune
     script: scripts/run_llm_scores.py

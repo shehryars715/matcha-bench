@@ -1,0 +1,7 @@
+# Quick check at the start of a scoring session: the first 500 test items of a run (agreement with its
+# generated answers, and speed). A failed check stops the session before the long runs start.
+base: ../llm_scores.yaml
+output_root: outputs/llm/scores_probe
+splits: [test]
+defaults:
+  limit: 500

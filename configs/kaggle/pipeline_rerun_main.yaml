@@ -14,6 +14,15 @@ stages:
   - name: llm-packages
     type: pip
     packages: ["peft>=0.13", "bitsandbytes>=0.45", "transformers>=4.46"]
+  - name: llm-scores-check        # 500 test items; a failure ends the session here
+    type: finetune
+    script: scripts/run_llm_scores.py
+    config: configs/kaggle/llm_scores_probe.yaml
+    prepare: [scripts/run_llm_scores.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, --prepare-only]
+    tasks: [matcha_user_binary_masked]
+    models: [mentalglm-chat]
+    seeds: [42]
+    minutes_per_run: {default: 15}
   - name: llm-scores-binary
     type: finetune
     script: scripts/run_llm_scores.py

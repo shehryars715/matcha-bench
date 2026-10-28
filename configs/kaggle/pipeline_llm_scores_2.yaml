@@ -1,0 +1,21 @@
+# Label probabilities of the final MentalGLM runs trained in lane 2 (shehryaralixyz, session 2-run-003):
+# disorder_post seeds 42/43 and disorder_post_masked seed 42 (scripts/run_llm_scores.py).
+#   python scripts/kaggle/kaggle_pipeline.py start --lane 2 --pipeline configs/kaggle/pipeline_llm_scores_2.yaml
+# Inference only, one run per T4; an unfinished split resumes from its last saved chunk next session.
+budget_hours: 8.0
+safety_margin_minutes: 20
+finetune_one_run_per_gpu: true
+
+stages:
+  - name: llm-packages
+    type: pip
+    packages: ["peft>=0.13", "bitsandbytes>=0.45", "transformers>=4.46"]
+  - name: llm-scores
+    type: finetune
+    script: scripts/run_llm_scores.py
+    config: configs/llm_scores.yaml
+    prepare: [scripts/run_llm_scores.py, --tasks, matcha_disorder_post, --models, mentalglm-chat-full, --prepare-only]
+    tasks: [matcha_disorder_post, matcha_disorder_post_masked]
+    models: [mentalglm-chat-full]
+    seeds: {matcha_disorder_post: [42, 43], matcha_disorder_post_masked: [42]}
+    minutes_per_run: {default: 20}

@@ -1,0 +1,5 @@
+# The stage-1 BERT-type runs repeated with identical settings, because stage 1 saved only their test
+# predictions and a class-prior correction may only be tuned on dev predictions. Separate output
+# folder, so the reported stage-1 runs stay as they are; the reruns' test scores are compared with them.
+base: ../finetune.yaml
+output_root: outputs/finetune_rerun

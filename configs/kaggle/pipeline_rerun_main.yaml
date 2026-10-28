@@ -1,0 +1,30 @@
+# Main chain (ayeshaabid11, resumes session run-010, which holds the DAPT models and the
+# user_binary_masked MentalGLM adapters):
+# 1. label probabilities of the user_binary_masked MentalGLM runs (`mentalglm-chat`, seeds 42-44);
+# 2. the stage-1 BERT-type runs on the 4 MATCHA tasks again, now keeping dev predictions
+#    (configs/kaggle/finetune_rerun.yaml -> outputs/finetune_rerun).
+#   python scripts/kaggle/kaggle_pipeline.py start --pipeline configs/kaggle/pipeline_rerun_main.yaml
+# Measured stage-1 times per run (one per GPU): disorder_post(+masked) ~20 min, binary ~6, multiclass
+# ~17; RoBERTa recipe ~33 / 11 / 31. The 60 reruns take ~18 GPU-hours, i.e. two sessions.
+budget_hours: 9.0
+safety_margin_minutes: 20
+finetune_one_run_per_gpu: true
+
+stages:
+  - name: llm-packages
+    type: pip
+    packages: ["peft>=0.13", "bitsandbytes>=0.45", "transformers>=4.46"]
+  - name: llm-scores-binary
+    type: finetune
+    script: scripts/run_llm_scores.py
+    config: configs/llm_scores.yaml
+    prepare: [scripts/run_llm_scores.py, --tasks, matcha_user_binary_masked, --models, mentalglm-chat, --prepare-only]
+    tasks: [matcha_user_binary_masked]
+    models: [mentalglm-chat]
+    minutes_per_run: {default: 20}
+  - name: finetune-rerun
+    type: finetune
+    config: configs/kaggle/finetune_rerun.yaml
+    tasks: [matcha_disorder_post, matcha_disorder_post_masked, matcha_user_multiclass_masked, matcha_user_binary_masked]
+    models: [bert-wwm-ext, chinese-mentalbert, matcha-random, matcha-depression, roberta-wwm-ext]
+    minutes_per_run: {default: 40, matcha_user_multiclass_masked: 35, matcha_user_binary_masked: 15}

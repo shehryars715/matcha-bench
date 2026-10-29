@@ -90,7 +90,8 @@ def start(args) -> None:
     command = f"python scripts/run_pipeline.py --config {args.pipeline} --budget-hours {budget}"
     if args.margin_minutes is not None:
         command += f" --margin-minutes {args.margin_minutes}"
-    url = push_kernel(slug, [command], sources, timeout_hours=budget, data_owner=state.get("data_owner"))
+    url = push_kernel(slug, [command], sources, timeout_hours=budget, data_owner=state.get("data_owner"),
+                      extra_datasets=cfg.get("datasets", []))
     state["runs"].append({"slug": slug, "owner": username(), "pipeline": args.pipeline,
                           "resumes": sources[0] if sources else None,
                           "pushed": time.strftime("%Y-%m-%d %H:%M:%S"), "url": url})

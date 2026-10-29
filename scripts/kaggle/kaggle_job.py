@@ -56,7 +56,7 @@ sh("pip install -q jieba")
 # Locate the data: an extracted data/dapt folder, or the uploaded zip.
 data_root = next((os.path.dirname(os.path.dirname(p)) for p in glob.glob("/kaggle/input/**/data/dapt", recursive=True)), None)
 if data_root is None:
-    zips = glob.glob("/kaggle/input/**/*.zip", recursive=True)
+    zips = [z for z in glob.glob("/kaggle/input/**/*.zip", recursive=True) if not z.endswith("addon.zip")]
     if not zips:
         sys.exit("No data found under /kaggle/input (attach the matcha-bench-data dataset)")
     data_root = "/kaggle/working/input_data"
@@ -72,6 +72,14 @@ for prev in glob.glob("/kaggle/input/**/matcha-bench/outputs", recursive=True):
     print("restoring outputs from", prev, flush=True)
     shutil.copytree(prev, os.path.join(REPO, "outputs"), dirs_exist_ok=True)
 
+# Optional add-on datasets (a pipeline's `datasets:`): their addon/ folder is copied over the
+# repo (extra code or files); an addon.zip that Kaggle did not unpack is extracted first.
+for archive in glob.glob("/kaggle/input/**/addon.zip", recursive=True):
+    zipfile.ZipFile(archive).extractall("/kaggle/working/addon_unpacked")
+for addon in glob.glob("/kaggle/input/**/addon", recursive=True) + glob.glob("/kaggle/working/addon_unpacked/addon"):
+    print("adding", addon, flush=True)
+    shutil.copytree(addon, REPO, dirs_exist_ok=True)
+
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 for cmd in CONFIG["commands"]:
     sh(cmd, cwd=REPO)
@@ -81,6 +89,7 @@ for ckpt in glob.glob(os.path.join(REPO, "outputs/dapt/*/checkpoint-*")):
     if os.path.exists(os.path.join(os.path.dirname(ckpt), "final")):
         shutil.rmtree(ckpt)
 shutil.rmtree("/kaggle/working/input_data", ignore_errors=True)
+shutil.rmtree("/kaggle/working/addon_unpacked", ignore_errors=True)
 sh("du -sh outputs/* || true", cwd=REPO)
 '''
 
@@ -119,11 +128,13 @@ def upload_data(args) -> None:
 
 
 def push_kernel(slug: str, commands: list[str], kernel_sources: list[str], gpu: str = "NvidiaTeslaT4",
-                timeout_hours: float | None = None, data_owner: str | None = None) -> str:
+                timeout_hours: float | None = None, data_owner: str | None = None,
+                extra_datasets: list[str] = ()) -> str:
     """Push and start a headless Kaggle job; returns its URL.
 
     kernel_sources may be bare slugs (this account) or "owner/slug" (shared from another account);
-    data_owner is the account that holds the dataset (default: this one).
+    data_owner is the account that holds the dataset (default: this one). extra_datasets are
+    attached too: bare slugs belong to this account, "owner/slug" to another.
     """
     user = username()
     config = {"git_url": GIT_URL, "commands": commands}
@@ -135,7 +146,8 @@ def push_kernel(slug: str, commands: list[str], kernel_sources: list[str], gpu: 
         "kernel_type": "script",
         "is_private": "true",
         "enable_internet": "true",
-        "dataset_sources": [f"{data_owner or user}/{DATASET_SLUG}"],
+        "dataset_sources": [f"{data_owner or user}/{DATASET_SLUG}"]
+                           + [d if "/" in d else f"{user}/{d}" for d in extra_datasets],
         "kernel_sources": [s if "/" in s else f"{user}/{s}" for s in kernel_sources],
     }
     meta["enable_gpu"] = "true" if gpu else "false"

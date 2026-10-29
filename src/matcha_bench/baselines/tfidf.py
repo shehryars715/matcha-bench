@@ -44,7 +44,12 @@ def run_tfidf(task_root: Path, task: str, output_root: Path, Cs=(0.25, 1.0, 4.0)
 
     out_dir = Path(output_root) / task / MODEL_TAG / "seed0"
     out_dir.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(out_dir / "test_predictions.npz", preds=preds, labels=y["test"])
+    if multi:
+        np.savez_compressed(out_dir / "test_predictions.npz", preds=preds, labels=y["test"])
+    else:  # log-probabilities too, on dev as well, as the BERT-type runs save their logits
+        for split in ("dev", "test"):
+            np.savez_compressed(out_dir / f"{split}_predictions.npz", logits=model.predict_log_proba(X[split]),
+                                preds=preds if split == "test" else model.predict(X[split]), labels=y[split])
     record = {
         "task": task, "model_tag": MODEL_TAG, "model_path": "tfidf-char-1-3+logreg", "seed": 0,
         "problem_type": meta["problem_type"], "average": meta["average"], "label_names": meta["label_names"],

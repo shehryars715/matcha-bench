@@ -1,0 +1,41 @@
+# Class-prior correction of the baselines (scripts/prior_correction.py, matcha_bench.prior): for every
+# run, tau is picked on its dev predictions and applied to its test predictions. Stage 1 kept no dev
+# predictions for the BERT-type runs, so those come from reruns with identical settings
+# (configs/kaggle/finetune_rerun.yaml -> outputs/finetune_rerun; the rerun's raw test F1 is listed next
+# to the reported one); MentalGLM's label probabilities come from scripts/run_llm_scores.py.
+roots:
+  - outputs
+  - outputs/kaggle/*/matcha-bench/outputs
+out_dir: outputs/results/prior
+reported_runs: outputs/results/paper/runs.csv   # stage-1 scores (scripts/make_tables.py), for the check
+tasks: [matcha_disorder_post, matcha_disorder_post_masked, matcha_user_binary_masked, matcha_user_multiclass_masked]
+seeds: [42, 43, 44]
+tau_grid: {start: 0.0, stop: 2.0, step: 0.05}
+
+# trained_toward: the class mix a model's scores are calibrated to. `uniform` for balanced class
+# weights (every BERT-type model and TF-IDF on the weighted tasks; the binary task is balanced anyway),
+# `train` for plain cross-entropy on the training set (MentalGLM's answer loss).
+models:
+  tfidf-lr:
+    name: TF-IDF + LR
+    path: finetune_rerun/{task}/{tag}/seed{seed}
+    seeds: [0]
+    files: {dev: dev_predictions.npz, test: test_predictions.npz, key: logits}
+    trained_toward: uniform
+  bert-wwm-ext: &bert
+    name: Chinese-BERT-wwm-ext
+    path: finetune_rerun/{task}/{tag}/seed{seed}
+    files: {dev: dev_predictions.npz, test: test_predictions.npz, key: logits}
+    trained_toward: uniform
+  chinese-mentalbert: {<<: *bert, name: Chinese MentalBERT (released)}
+  matcha-random: {<<: *bert, name: "DAPT on MATCHA, random masking"}
+  matcha-depression: {<<: *bert, name: "DAPT on MATCHA, lexicon-guided"}
+  roberta-wwm-ext: {<<: *bert, name: RoBERTa-wwm-ext}
+  mentalglm-chat-ft:
+    name: MentalGLM-chat, QLoRA fine-tuned
+    path: llm/scores/{task}/{tag}/seed{seed}
+    tag: mentalglm-chat-full
+    tag_per_task: {matcha_user_binary_masked: mentalglm-chat}
+    seeds: {matcha_disorder_post: [42, 43, 45]}
+    files: {dev: dev_scores.npz, test: test_scores.npz, key: logp}
+    trained_toward: train

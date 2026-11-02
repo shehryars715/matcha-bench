@@ -457,3 +457,67 @@ def test_scores_are_checked_against_the_generated_answers_and_resume(tmp_path, m
     assert train["logp"].shape == (7, 2) and train["labels"].tolist() == (np.arange(7) % 2).tolist()
     assert not list(out.glob("*.partial.npz"))
     assert run() is None  # finished runs are skipped
+
+
+def test_scores_can_use_an_adapter_fine_tuned_on_a_different_task_name(tmp_path):
+    """adapter_task lets a new input set (e.g. extra posts beyond the training cap) be scored with an
+    existing fine-tuned run's adapter, without needing a task name known to matcha_bench.llm.prompts."""
+    import json
+
+    pytest.importorskip("peft")
+    from peft import LoraConfig, get_peft_model
+    from transformers import AutoTokenizer, GlmConfig, GlmForCausalLM
+
+    from matcha_bench.llm import score
+
+    try:
+        tok = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct", local_files_only=True)
+    except Exception:
+        pytest.skip("needs a cached chat tokenizer")
+    model_dir = tmp_path / "model"
+    torch.manual_seed(0)
+    GlmForCausalLM(GlmConfig(vocab_size=len(tok), hidden_size=16, intermediate_size=32, num_hidden_layers=1,
+                             num_attention_heads=2, num_key_value_heads=1, head_dim=8,
+                             pad_token_id=tok.pad_token_id)).save_pretrained(model_dir)
+    tok.save_pretrained(model_dir)
+
+    real_task = "matcha_user_binary_masked"  # a task score.get_prompt() actually knows
+    new_task = "not_a_known_prompt_task"     # would raise KeyError if adapter_task were not used
+    task_dir = tmp_path / "tasks"
+    for name, n in [(real_task, 4), (new_task, 3)]:
+        d = task_dir / name
+        d.mkdir(parents=True)
+        (d / "meta.json").write_text(json.dumps({"problem_type": "single_label_classification",
+                                                  "label_names": ["control", "disorder"], "average": "macro"}))
+        for split, k in [("train", n), ("dev", 1), ("test", 1)]:
+            rows = [{"id": f"{split}{i}", "text": f"帖子{i}内容", "label": i % 2} for i in range(k)]
+            (d / f"{split}.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+    hp = {"quant": "fp32", "max_text_chars": 20, "score_batch_size": 2, "save_every": 10, "min_agreement": 0.98}
+
+    # a dummy run under new_task's own name: gets past the file-existence checks but is never actually
+    # loaded, because the regression this guards against (using `task`, not `adapter_task`, for the
+    # prompt) fails at the prompt lookup, which happens before the adapter is loaded
+    dummy_dir = tmp_path / "finetune" / new_task / "m" / "seed42" / "best_adapter"
+    dummy_dir.mkdir(parents=True)
+    (dummy_dir / "adapter_model.safetensors").write_bytes(b"")
+    (tmp_path / "finetune" / new_task / "m" / "seed42" / "metrics.json").write_text("{}")
+    np.savez(tmp_path / "finetune" / new_task / "m" / "seed42" / "test_predictions.npz",
+            preds=np.array([0]), labels=np.array([0]), indices=np.array([0]))
+    with pytest.raises(KeyError, match="not_a_known_prompt_task"):  # adapter_task not given: falls back to `task`
+        score.run_llm_scores(task_dir, new_task, str(model_dir), "m", tmp_path / "finetune", tmp_path / "scores",
+                             42, hp, splits=["train"])
+
+    # the real case: a real adapter fine-tuned on real_task, scoring new_task's own (different) data
+    run_dir = tmp_path / "finetune" / real_task / "m" / "seed42"
+    lora = get_peft_model(GlmForCausalLM.from_pretrained(model_dir),
+                          LoraConfig(task_type="CAUSAL_LM", r=2, lora_alpha=4, target_modules=["q_proj", "v_proj"]))
+    lora.save_pretrained(run_dir / "best_adapter")
+    (run_dir / "metrics.json").write_text(json.dumps({"test": {"f1": 0.5}}))
+    np.savez(run_dir / "test_predictions.npz", preds=np.array([0]), labels=np.array([0]), indices=np.array([0]))
+
+    record = score.run_llm_scores(task_dir, new_task, str(model_dir), "m", tmp_path / "finetune", tmp_path / "scores",
+                                  42, hp, splits=["train"], adapter_task=real_task)
+    out = tmp_path / "scores" / new_task / "m" / "seed42"  # saved under the new task, not the adapter's
+    assert record["task"] == new_task and set(record["splits"]) == {"train"}
+    assert np.load(out / "train_scores.npz")["logp"].shape == (3, 2)  # new_task's own 3 train rows
+    assert not (tmp_path / "scores" / real_task).exists()  # never wrote anything under the adapter's task

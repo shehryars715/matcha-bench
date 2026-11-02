@@ -44,9 +44,10 @@ def main():
             continue
         for task in tasks:
             for seed in args.seeds or cfg["seeds"]:
+                hp = hparams(cfg, task, tag)
                 run_llm_scores(task_root, task, path, tag, resolve_path(cfg["adapter_root"]),
-                               resolve_path(cfg["output_root"]), seed, hparams(cfg, task, tag),
-                               splits=cfg["splits"], deadline=deadline)
+                               resolve_path(cfg["output_root"]), seed, hp, splits=cfg["splits"],
+                               deadline=deadline, adapter_task=hp.get("adapter_task"))
                 gc.collect()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()

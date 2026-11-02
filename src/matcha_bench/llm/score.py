@@ -123,22 +123,27 @@ def _split_stats(logp: np.ndarray, labels: np.ndarray, meta: dict) -> dict:
 
 def run_llm_scores(task_root: Path, task: str, model_path: str, model_tag: str, adapter_root: Path,
                    output_root: Path, seed: int, hp: dict, splits=("test", "dev", "train"),
-                   deadline: float | None = None) -> dict | None:
+                   deadline: float | None = None, adapter_task: str | None = None) -> dict | None:
     """Label probabilities of one fine-tuned run (its best_adapter) on each split, test first. The
     test arg-max must agree with the run's generated test answers on at least `min_agreement` of the
-    items, or the run stops before scoring the other splits (check_failed.json)."""
+    items, or the run stops before scoring the other splits (check_failed.json).
+
+    `adapter_task` (default: `task`) is the task name the adapter was *fine-tuned* on, when that
+    differs from the one being scored here — e.g. scoring a same-prompt superset or a related split
+    with an existing run's adapter, instead of retraining one for every new input set."""
+    adapter_task = adapter_task or task
     out_dir = Path(output_root) / task / model_tag / f"seed{seed}"
     if (out_dir / "metrics.json").exists():
         log.info("Skipping %s / %s / seed %d scores (already done)", task, model_tag, seed)
         return None
-    run_dir = Path(adapter_root) / task / model_tag / f"seed{seed}"
+    run_dir = Path(adapter_root) / adapter_task / model_tag / f"seed{seed}"
     adapter = run_dir / "best_adapter"
     for needed in (adapter / "adapter_model.safetensors", run_dir / "metrics.json", run_dir / "test_predictions.npz"):
         if not needed.exists():
             raise FileNotFoundError(f"{needed} missing: the fine-tuned run must be finished (and its outputs restored)")
     t_start = time.time()
     meta, data = load_task(task_root, task)
-    prompt = get_prompt(task)
+    prompt = get_prompt(adapter_task)
     model, tokenizer = load_model(model_path, hp["quant"], lora_path=str(adapter))
     prefix, label_ids = answer_tokens(tokenizer, prompt)
     out_dir.mkdir(parents=True, exist_ok=True)
